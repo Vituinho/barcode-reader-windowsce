@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.env
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Windows CE client build output / runtime data
+windows-ce-client/**/bin/
+windows-ce-client/**/obj/
+windows-ce-client/build/
+windows-ce-client/**/*.user
+windows-ce-client/**/*.suo

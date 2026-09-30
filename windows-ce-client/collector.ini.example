@@ -1,0 +1,16 @@
+# Givova Coleta - configuracao do coletor
+# Copie para collector.ini na mesma pasta do GivovaCollector.exe (ou use a tela CONFIG, PIN padrao 1234).
+DeviceId=GVT-CE-001
+DeviceName=Coletor 001
+ApiBaseUrl=http://192.168.0.10:8000
+SyncIntervalSeconds=5
+RequestTimeoutSeconds=10
+DuplicateWindowSeconds=2
+HeartbeatIntervalSeconds=60
+TabCompletesScan=true
+SoundEnabled=true
+ScannerMode=WEDGE
+# Pasta do journal de leituras. Vazio = <pasta do exe>\data. Em muitos coletores apenas certas
+# pastas sobrevivem a um cold boot (ex.: \Application, \Flash File Store, \IPSM). Ajuste aqui.
+DataDirectory=
+AdminPinHash=
