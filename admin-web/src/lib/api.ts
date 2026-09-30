@@ -1,4 +1,5 @@
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+// Inlined at build time by Next.js (NEXT_PUBLIC_*). next.config.ts fails the build when it is missing.
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 const TOKEN_KEY = "givova_admin_token";
 
 export class ApiError extends Error {

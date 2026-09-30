@@ -100,8 +100,26 @@ cp .env.example .env.local        # NEXT_PUBLIC_API_URL=http://<server>:8000
 npm run dev                       # or: npm run build && npm run start
 ```
 
-Open `http://localhost:3000` and log in with an ADMIN user. If the panel is served from another origin, add that
-origin to `CORS_ORIGINS` in `server/.env`.
+Open `http://localhost:3000` and log in with an ADMIN user. The API only accepts browser requests from the
+origin(s) in `ADMIN_WEB_ORIGIN` (`server/.env`). Wildcards are refused. `NEXT_PUBLIC_API_URL` is inlined into the
+bundle at build time, so `npm run build` fails if it is missing.
+
+## Railway deployment
+
+One Railway project with three services from this repo:
+
+| Service | Root directory | Config file | Variables |
+|---|---|---|---|
+| PostgreSQL | — | — | managed by Railway |
+| API | `/server` | `/server/railway.json` | `DATABASE_URL`, `SECRET_KEY`, `ADMIN_WEB_ORIGIN`, `SEED_ADMIN_PASSWORD`, `SEED_OPERATOR_PASSWORD` |
+| Admin | `/admin-web` | `/admin-web/railway.json` | `NEXT_PUBLIC_API_URL` |
+
+- **API service:** pre-deploy runs `alembic upgrade head`, start is `python -m app.serve` (binds `0.0.0.0:$PORT`),
+  and the health check is `/api/health`.
+- **Admin service:** builds `output: "standalone"` and starts with `npm run start` (binds `0.0.0.0:$PORT`).
+- **Seed:** a manual step, `python -m app.seed`, run on the API service.
+- **Collectors:** set `ApiBaseUrl` to the API's public `https://…up.railway.app` URL. Railway serves HTTPS with
+  modern TLS only, so check each device with TESTAR CONEXÃO (see TLS note below).
 
 ## Windows CE collector
 

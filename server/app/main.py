@@ -15,13 +15,18 @@ log = logging.getLogger("givova")
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Givova Coleta API", version="1.0.0")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["Content-Disposition"],
-    )
+    origins = settings.cors_origin_list
+    if origins:
+        # Only the admin panel origin(s); collectors are not browsers and need no CORS.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST", "PATCH"],
+            allow_headers=["Authorization", "Content-Type", "Accept"],
+            expose_headers=["Content-Disposition"],
+        )
+    else:
+        log.warning("ADMIN_WEB_ORIGIN not set: browser requests from the admin panel will be blocked (CORS)")
 
     @app.exception_handler(DomainError)
     async def domain_error_handler(_: Request, exc: DomainError):

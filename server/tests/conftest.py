@@ -13,6 +13,7 @@ os.environ["DATABASE_URL"] = TEST_DB
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef"
 os.environ["DUPLICATE_WINDOW_SECONDS"] = "2"
 os.environ["AUTO_REGISTER_DEVICES"] = "false"
+os.environ["ADMIN_WEB_ORIGIN"] = "https://admin.example.com"
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
