@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/dialog";
 import { Badge, Btn, ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
 import { api, errorMessage, fmtAge, fmtDateTime } from "@/lib/api";
 import type { Device } from "@/lib/types";
@@ -9,6 +10,7 @@ export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [form, setForm] = useState({ id: "", name: "" });
   const [error, setError] = useState<string | null>(null);
+  const { confirm: ask, dialog } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -35,7 +37,7 @@ export default function DevicesPage() {
   }
 
   return (
-    <Shell title="Coletores">
+    <Shell title="Coletores" description="Navegadores e aparelhos usados para coletar (WEB-…). Status baseado no último contato recebido.">
       <ErrorBox error={error} />
       <form
         className="mb-4 flex flex-wrap gap-2"
@@ -70,7 +72,11 @@ export default function DevicesPage() {
             <Td mono>{d.lastIp ?? "—"}</Td>
             <Td>
               {d.status === "ACTIVE" ? (
-                <Btn variant="danger" onClick={() => confirm(`Desativar ${d.id}?`) && call(`/api/admin/devices/${d.id}`, "PATCH", { status: "DISABLED" })}>Desativar</Btn>
+                <Btn variant="danger" onClick={async () => {
+                  const r = await ask({ title: `Desativar ${d.name}?`, tone: "danger", confirmLabel: "Desativar coletor",
+                    message: "O coletor não poderá mais entrar nem enviar leituras. Leituras pendentes ficam guardadas no aparelho até ser reativado." });
+                  if (r.ok) void call(`/api/admin/devices/${d.id}`, "PATCH", { status: "DISABLED" });
+                }}>Desativar</Btn>
               ) : (
                 <Btn variant="secondary" onClick={() => call(`/api/admin/devices/${d.id}`, "PATCH", { status: "ACTIVE" })}>Ativar</Btn>
               )}
@@ -81,6 +87,7 @@ export default function DevicesPage() {
       <p className="mt-2 text-xs text-slate-500">
         Status baseado no último heartbeat/leitura recebido. OFFLINE significa apenas que o servidor não recebe contato recente.
       </p>
+      {dialog}
     </Shell>
   );
 }

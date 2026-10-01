@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dialog";
 import { ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 
@@ -25,6 +26,7 @@ export default function MaintenancePage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm: ask, dialog } = useConfirm();
 
   useEffect(() => {
     api<{ operationalResetEnabled: boolean }>("/api/admin/maintenance")
@@ -34,7 +36,9 @@ export default function MaintenancePage() {
 
   async function reset() {
     if (typed !== CONFIRMATION) return;
-    if (!confirm("Confirmar o reset dos dados operacionais? Esta ação não pode ser desfeita.")) return;
+    const r = await ask({ title: "Resetar dados operacionais?", tone: "danger", confirmLabel: "Resetar agora",
+      message: "Cargas, notas, estoque, expedições e leituras serão removidos. Esta ação não pode ser desfeita." });
+    if (!r.ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -100,6 +104,7 @@ export default function MaintenancePage() {
           </Table>
         </section>
       )}
+      {dialog}
     </Shell>
   );
 }

@@ -9,7 +9,7 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   tone?: "primary" | "danger";
   /** Optional text/number field shown in the dialog (e.g. reason, volume count). */
-  input?: { label: string; placeholder?: string; type?: "text" | "number"; required?: boolean; initial?: string };
+  input?: { label: string; placeholder?: string; type?: "text" | "number" | "password"; required?: boolean; initial?: string };
 }
 
 export interface ConfirmResult {

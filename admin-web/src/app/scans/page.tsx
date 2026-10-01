@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/dialog";
 import { Badge, Btn, ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
 import { api, downloadFile, errorMessage, fmtDateTime, query } from "@/lib/api";
 import type { Device, Scan, Session, User } from "@/lib/types";
@@ -17,6 +18,7 @@ export default function ScansPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { confirm: ask, dialog } = useConfirm();
 
   useEffect(() => {
     // Deep link from the dashboard: /scans?syncState=CONFLICT
@@ -48,7 +50,16 @@ export default function ScansPage() {
   }, [load]);
 
   async function resolve(scan: Scan, action: "ACCEPT" | "REJECT") {
-    const note = window.prompt(action === "ACCEPT" ? "Observação (aceitar leitura):" : "Motivo da rejeição:") ?? undefined;
+    const r = await ask({
+      title: action === "ACCEPT" ? "Aceitar leitura" : "Rejeitar leitura",
+      message: action === "ACCEPT" ? "A leitura passa a contar normalmente (e entra no estoque se o produto existir)."
+        : "A leitura fica registrada como rejeitada e não conta no estoque.",
+      confirmLabel: action === "ACCEPT" ? "Aceitar" : "Rejeitar",
+      tone: action === "ACCEPT" ? "primary" : "danger",
+      input: { label: action === "ACCEPT" ? "Observação (opcional)" : "Motivo", required: action === "REJECT" },
+    });
+    if (!r.ok) return;
+    const note = r.value || undefined;
     try {
       await api(`/api/admin/scans/${scan.id}/resolve`, { method: "POST", body: { action, note } });
       load();
@@ -61,7 +72,7 @@ export default function ScansPage() {
 
   return (
     <Shell
-      title="Leituras"
+      title="Leituras" description="Todas as leituras recebidas dos coletores. Filtre por coletor, operador, sessão ou estado e exporte em CSV."
       actions={
         <Btn variant="secondary" onClick={() => downloadFile(`/api/admin/scans/export.csv${query(applied)}`, "leituras.csv").catch((e) => setError(errorMessage(e)))}>
           Exportar CSV
@@ -132,6 +143,7 @@ export default function ScansPage() {
         <Btn variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Anterior</Btn>
         <Btn variant="secondary" disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>Próxima</Btn>
       </div>
+      {dialog}
     </Shell>
   );
 }

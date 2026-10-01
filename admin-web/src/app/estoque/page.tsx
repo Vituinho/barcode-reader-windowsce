@@ -1,22 +1,27 @@
 "use client";
 
+import { Boxes, History, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Btn, ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
+import { Badge, Btn, EmptyState, ErrorBox, inputCls, Loading, SearchInput, Shell, Table, Td, useCurrentUser } from "@/components/ui";
 import { api, errorMessage, fmtDateTime, query } from "@/lib/api";
 import type { InventoryRow, Movement } from "@/lib/types";
 
-const TYPE_LABEL: Record<string, string> = {
-  SCAN_IN: "Entrada (leitura)",
-  DISPATCH_OUT: "Saída (expedição)",
-  ADJUSTMENT_IN: "Ajuste +",
-  ADJUSTMENT_OUT: "Ajuste −",
-};
+interface MovementHistory {
+  code: string;
+  description: string;
+  quantity: number;
+  movements: Movement[];
+}
+
+const nf = new Intl.NumberFormat("pt-BR");
 
 export default function StockPage() {
-  const [rows, setRows] = useState<InventoryRow[]>([]);
+  const user = useCurrentUser();
+  const admin = user?.role === "ADMIN";
+  const [rows, setRows] = useState<InventoryRow[] | null>(null);
   const [q, setQ] = useState("");
   const [onlyInStock, setOnlyInStock] = useState(true);
-  const [selected, setSelected] = useState<{ code: string; description: string; quantity: number; movements: Movement[] } | null>(null);
+  const [selected, setSelected] = useState<MovementHistory | null>(null);
   const [adj, setAdj] = useState({ quantity: "", reason: "" });
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +35,8 @@ export default function StockPage() {
   }, [q, onlyInStock]);
 
   useEffect(() => {
-    load();
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
   }, [load]);
 
   async function openHistory(code: string) {
@@ -49,14 +55,11 @@ export default function StockPage() {
     if (!selected) return;
     const quantity = Number(adj.quantity);
     if (!Number.isInteger(quantity) || quantity === 0) {
-      setError("Quantidade do ajuste deve ser um inteiro diferente de zero (use negativo para retirar).");
+      setError("Quantidade do ajuste deve ser um inteiro diferente de zero (negativo para retirar).");
       return;
     }
     try {
-      await api("/api/inventory/adjustments", {
-        method: "POST",
-        body: { productCode: selected.code, quantity, reason: adj.reason },
-      });
+      await api("/api/inventory/adjustments", { method: "POST", body: { productCode: selected.code, quantity, reason: adj.reason } });
       await openHistory(selected.code);
       await load();
     } catch (e) {
@@ -64,61 +67,102 @@ export default function StockPage() {
     }
   }
 
-  const total = rows.reduce((s, r) => s + r.quantity, 0);
+  const total = (rows ?? []).reduce((s, r) => s + r.quantity, 0);
 
   return (
-    <Shell title="Estoque">
+    <Shell title="Estoque" description="Saldo atual por produto. Entradas vêm das leituras; saídas, das expedições.">
       <ErrorBox error={error} />
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <input className={`${inputCls} w-72`} placeholder="Código ou descrição" value={q} onChange={(e) => setQ(e.target.value)} />
-        <label className="flex items-center gap-1 text-sm">
-          <input type="checkbox" checked={onlyInStock} onChange={(e) => setOnlyInStock(e.target.checked)} /> Somente com estoque
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <SearchInput value={q} onChange={setQ} placeholder="Buscar por código ou produto..." className="sm:w-[28rem]" />
+        <label className="inline-flex h-10 items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="size-4 accent-orange-600" checked={onlyInStock} onChange={(e) => setOnlyInStock(e.target.checked)} />
+          Somente com estoque
         </label>
-        <span className="text-sm text-slate-600">{rows.length} produtos · <b>{total}</b> volumes</span>
+        {rows && (
+          <span className="text-sm text-slate-500 sm:ml-auto">
+            {nf.format(rows.length)} produtos · <b className="text-slate-900">{nf.format(total)}</b> volumes
+          </span>
+        )}
       </div>
 
-      {selected && (
-        <div className="mb-4 rounded border border-slate-300 bg-white p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-semibold">
-              <span className="font-mono">{selected.code}</span> · {selected.description} · estoque <b>{selected.quantity}</b>
-            </h2>
-            <Btn variant="secondary" onClick={() => setSelected(null)}>Fechar</Btn>
-          </div>
-          <div className="my-3 flex flex-wrap items-end gap-2 rounded bg-slate-50 p-2 text-sm">
-            <span className="font-medium">Ajuste manual (ADMIN):</span>
-            <input className={`${inputCls} w-28`} placeholder="+5 / -2" value={adj.quantity} onChange={(e) => setAdj({ ...adj, quantity: e.target.value })} />
-            <input className={`${inputCls} w-72`} placeholder="Motivo (obrigatório)" value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })} />
-            <Btn onClick={adjust} disabled={adj.reason.trim().length < 3 || !adj.quantity}>Registrar ajuste</Btn>
-          </div>
-          <Table head={["Data", "Tipo", "Qtd", "Usuário", "Coletor", "Motivo / origem"]}>
-            {selected.movements.map((m) => (
-              <tr key={m.id}>
-                <Td>{fmtDateTime(m.createdAt)}</Td>
-                <Td><Badge value={m.type} /> <span className="text-xs text-slate-500">{TYPE_LABEL[m.type]}</span></Td>
-                <Td><b className={m.quantity < 0 ? "text-red-700" : "text-green-700"}>{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</b></Td>
-                <Td>{m.createdByName ?? "—"}</Td>
-                <Td mono>{m.deviceId ?? "—"}</Td>
-                <Td>{m.reason ?? (m.loadId ? <a className="underline" href={`/cargas/${m.loadId}`}>carga</a> : m.scanId ? "leitura" : "—")}</Td>
-              </tr>
-            ))}
-          </Table>
-        </div>
+      {rows === null ? (
+        !error && <Loading />
+      ) : (
+        <Table
+          head={["Código", "Produto", "Unidade", { label: "Estoque", align: "right" }, "Última entrada", "Última saída", ""]}
+          minWidth={820}
+          empty={<EmptyState icon={Boxes} title="Nenhum produto encontrado" description={onlyInStock ? "Desmarque “Somente com estoque” para ver todo o catálogo." : undefined} />}
+        >
+          {rows.map((r) => (
+            <tr key={r.productCode}>
+              <Td mono>{r.productCode}</Td>
+              <Td className="max-w-[28rem]">{r.description}</Td>
+              <Td>{r.unit ?? "—"}</Td>
+              <Td align="right"><span className={`text-base font-bold ${r.quantity === 0 ? "text-slate-400" : ""}`}>{nf.format(r.quantity)}</span></Td>
+              <Td className="whitespace-nowrap text-slate-600">{fmtDateTime(r.lastInAt)}</Td>
+              <Td className="whitespace-nowrap text-slate-600">{fmtDateTime(r.lastOutAt)}</Td>
+              <Td>{admin && <Btn variant="ghost" size="sm" icon={History} onClick={() => void openHistory(r.productCode)}>Histórico</Btn>}</Td>
+            </tr>
+          ))}
+        </Table>
       )}
 
-      <Table head={["Código", "Produto", "Unidade", "Estoque atual", "Última entrada", "Última saída", ""]}>
-        {rows.map((r) => (
-          <tr key={r.productCode}>
-            <Td mono>{r.productCode}</Td>
-            <Td>{r.description}</Td>
-            <Td>{r.unit ?? "—"}</Td>
-            <Td><span className="text-lg font-semibold">{r.quantity}</span></Td>
-            <Td>{fmtDateTime(r.lastInAt)}</Td>
-            <Td>{fmtDateTime(r.lastOutAt)}</Td>
-            <Td><Btn variant="secondary" onClick={() => openHistory(r.productCode)}>Movimentações</Btn></Td>
-          </tr>
-        ))}
-      </Table>
+      {selected && (
+        <div className="fixed inset-0 z-30" role="dialog" aria-modal="true" aria-label={`Movimentações de ${selected.code}`}>
+          <div className="absolute inset-0 bg-slate-950/40" onClick={() => setSelected(null)} />
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-white shadow-xl">
+            <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-lg font-bold">{selected.code}</div>
+                <div className="truncate text-sm text-slate-600">{selected.description}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Estoque</div>
+                <div className="text-2xl font-bold tabular-nums">{nf.format(selected.quantity)}</div>
+              </div>
+              <button onClick={() => setSelected(null)} aria-label="Fechar" className="inline-flex size-10 items-center justify-center rounded-md hover:bg-slate-100">
+                <X className="size-5" aria-hidden />
+              </button>
+            </div>
+            <form
+              className="flex flex-wrap items-end gap-2 border-b border-slate-200 bg-slate-50 px-5 py-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void adjust();
+              }}
+            >
+              <label className="text-xs font-medium text-slate-600">
+                Ajuste
+                <input className={`${inputCls} mt-1 block w-24`} inputMode="numeric" placeholder="+5 / -2" value={adj.quantity}
+                       onChange={(e) => setAdj({ ...adj, quantity: e.target.value })} />
+              </label>
+              <label className="min-w-0 flex-1 text-xs font-medium text-slate-600">
+                Motivo (obrigatório)
+                <input className={`${inputCls} mt-1 block w-full`} value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })} />
+              </label>
+              <Btn type="submit" disabled={adj.reason.trim().length < 3 || !adj.quantity}>Registrar</Btn>
+            </form>
+            <ol className="flex-1 divide-y divide-slate-100 overflow-y-auto">
+              {selected.movements.length === 0 && <li><EmptyState title="Sem movimentações" /></li>}
+              {selected.movements.map((m) => (
+                <li key={m.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                  <span className={`w-12 text-right text-base font-bold tabular-nums ${m.quantity < 0 ? "text-red-700" : "text-green-700"}`}>
+                    {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <Badge value={m.type} />
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {fmtDateTime(m.createdAt)} · {m.createdByName ?? "—"}{m.deviceId ? ` · ${m.deviceId}` : ""}
+                    </span>
+                    {m.reason && <span className="block text-xs text-slate-700">{m.reason}</span>}
+                  </span>
+                  {m.loadId && <a href={`/cargas/${m.loadId}`} className="text-xs font-semibold text-orange-700 hover:underline">Carga</a>}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }

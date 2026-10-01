@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+}
+
 body {
-  background: #f1f5f9;
+  background: #f8fafc;
   color: #0f172a;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible keyboard focus everywhere (warehouse keyboards, scanners, tab navigation). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid #ea580c;
+  outline-offset: 2px;
+}
+
+/* Numbers that change while you look at them should not jump. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

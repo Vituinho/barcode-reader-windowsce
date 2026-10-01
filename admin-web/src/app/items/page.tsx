@@ -52,12 +52,12 @@ export default function ItemsPage() {
   }
 
   return (
-    <Shell title="Itens / produtos">
+    <Shell title="Itens / produtos" description="Produtos identificados pelo código (cProd). Criados automaticamente pela importação de NF-e ou cadastrados aqui.">
       <ErrorBox error={error} />
       <div className="mb-4 flex flex-wrap items-start gap-2 rounded border border-slate-200 bg-white p-3">
         <input className={inputCls} placeholder="SKU (opcional)" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
         <input className={`${inputCls} w-72`} placeholder="Nome do item" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <textarea className={`${inputCls} w-72`} rows={2} placeholder="Códigos de barras (um por linha)" value={form.barcodes} onChange={(e) => setForm({ ...form, barcodes: e.target.value })} />
+        <textarea className={`${inputCls} h-auto w-72 py-2`} rows={2} placeholder="Códigos de barras (um por linha)" value={form.barcodes} onChange={(e) => setForm({ ...form, barcodes: e.target.value })} />
         <Btn onClick={create} disabled={!form.name.trim()}>Cadastrar item</Btn>
       </div>
       <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); load(q); }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/dialog";
 import { Badge, Btn, ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
 import { api, errorMessage, fmtDateTime } from "@/lib/api";
 import type { User } from "@/lib/types";
@@ -9,6 +10,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [form, setForm] = useState({ username: "", fullName: "", password: "", role: "OPERATOR" });
   const [error, setError] = useState<string | null>(null);
+  const { confirm: ask, dialog } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -35,7 +37,7 @@ export default function UsersPage() {
   }
 
   return (
-    <Shell title="Usuários">
+    <Shell title="Usuários" description="Operadores acessam o coletor, estoque e cargas. Administradores acessam todo o painel.">
       <ErrorBox error={error} />
       <form
         className="mb-4 flex flex-wrap gap-2"
@@ -69,8 +71,12 @@ export default function UsersPage() {
                 <Btn
                   variant="secondary"
                   onClick={() => {
-                    const password = window.prompt(`Nova senha para ${u.username} (mínimo 6 caracteres):`);
-                    if (password) call(`/api/admin/users/${u.id}`, "PATCH", { password });
+                    void (async () => {
+                      const r = await ask({ title: `Nova senha para ${u.username}`, confirmLabel: "Redefinir senha",
+                        message: "Mínimo de 6 caracteres. Informe a nova senha ao usuário por um canal seguro.",
+                        input: { label: "Nova senha", type: "password", required: true } });
+                      if (r.ok) void call(`/api/admin/users/${u.id}`, "PATCH", { password: r.value });
+                    })();
                   }}
                 >
                   Redefinir senha
@@ -80,6 +86,7 @@ export default function UsersPage() {
           </tr>
         ))}
       </Table>
+      {dialog}
     </Shell>
   );
 }

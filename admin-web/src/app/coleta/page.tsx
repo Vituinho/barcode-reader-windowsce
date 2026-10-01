@@ -327,6 +327,11 @@ export default function ColetaPage() {
           <span className={`inline-flex h-8 items-center whitespace-nowrap rounded-full px-3 text-xs font-bold tabular-nums ${pending ? "bg-sky-700 text-white" : "bg-slate-100 text-slate-600"}`}>
             Pendentes: {pending}
           </span>
+          {user.role === "ADMIN" && (
+            <Link href="/dashboard" className="hidden h-8 items-center gap-1.5 rounded-md border border-slate-300 px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 sm:inline-flex">
+              <LayoutDashboard className="size-3.5" aria-hidden /> PAINEL
+            </Link>
+          )}
           <button
             onClick={() => setMenuOpen(true)}
             className="inline-flex size-10 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-orange-600"
@@ -412,7 +417,7 @@ export default function ColetaPage() {
             </div>
           </label>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <button
               type="button"
               onClick={() => {
@@ -420,7 +425,7 @@ export default function ColetaPage() {
                 setTimeout(() => inputRef.current?.focus(), 0);
               }}
               aria-pressed={manualEntry}
-              className={`inline-flex h-12 items-center gap-2 rounded-md border px-4 text-sm font-semibold ${manualEntry ? "border-orange-600 bg-orange-50 text-orange-800" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+              className={`inline-flex h-12 items-center justify-center gap-2 rounded-md border px-4 text-sm font-semibold ${manualEntry ? "border-orange-600 bg-orange-50 text-orange-800" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
             >
               <Keyboard className="size-4" aria-hidden /> DIGITAR CÓDIGO
             </button>
@@ -431,7 +436,7 @@ export default function ColetaPage() {
                   primeAudio();
                   setCameraOpen(true);
                 }}
-                className="inline-flex h-12 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <Camera className="size-4" aria-hidden /> LER COM CÂMERA
               </button>
@@ -440,7 +445,7 @@ export default function ColetaPage() {
               <button
                 type="button"
                 onClick={() => void install()}
-                className="inline-flex h-12 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <Download className="size-4" aria-hidden /> INSTALAR APLICATIVO
               </button>
@@ -449,7 +454,7 @@ export default function ColetaPage() {
               <button
                 type="button"
                 onClick={() => engineRef.current?.trigger(true)}
-                className="inline-flex h-12 items-center gap-2 rounded-md border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-800 hover:bg-sky-50"
+                className="col-span-2 inline-flex h-12 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-800 hover:bg-sky-50"
               >
                 <CloudOff className="size-4" aria-hidden /> SINCRONIZAR AGORA
               </button>

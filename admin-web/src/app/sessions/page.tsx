@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/dialog";
 import { Badge, Btn, ErrorBox, inputCls, Shell, Table, Td } from "@/components/ui";
 import { api, errorMessage, fmtDateTime } from "@/lib/api";
 import type { Session } from "@/lib/types";
@@ -12,6 +13,7 @@ export default function SessionsPage() {
   const [name, setName] = useState("");
   const [type, setType] = useState("RECEIVING");
   const [error, setError] = useState<string | null>(null);
+  const { confirm: ask, dialog } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +38,7 @@ export default function SessionsPage() {
   }
 
   return (
-    <Shell title="Sessões de coleta">
+    <Shell title="Sessões de coleta" description="Sessões apenas agrupam leituras. O estoque é atualizado com ou sem sessão selecionada no coletor.">
       <ErrorBox error={error} />
       <form
         className="mb-4 flex flex-wrap gap-2"
@@ -64,14 +66,22 @@ export default function SessionsPage() {
             <Td>
               <div className="flex flex-wrap gap-1">
                 {s.status === "OPEN" ? (
-                  <Btn variant="secondary" onClick={() => confirm(`Fechar a sessão ${s.name}?`) && run(`/api/admin/sessions/${s.id}/close`)}>Fechar</Btn>
+                  <Btn variant="secondary" onClick={async () => {
+                    const r = await ask({ title: `Encerrar a sessão ${s.name}?`, confirmLabel: "Encerrar sessão",
+                      message: "Leituras enviadas depois do encerramento (por exemplo, de coletores offline) ficarão em revisão." });
+                    if (r.ok) void run(`/api/admin/sessions/${s.id}/close`);
+                  }}>Fechar</Btn>
                 ) : (
                   <Btn variant="secondary" onClick={() => run(`/api/admin/sessions/${s.id}/reopen`)}>Reabrir</Btn>
                 )}
                 {s.conflictCount > 0 && (
                   <>
                     <Btn variant="secondary" onClick={() => run(`/api/admin/sessions/${s.id}/resolve-conflicts`, { action: "ACCEPT", note: "aceito em lote" })}>Aceitar conflitos</Btn>
-                    <Btn variant="danger" onClick={() => confirm("Rejeitar todas as leituras em conflito?") && run(`/api/admin/sessions/${s.id}/resolve-conflicts`, { action: "REJECT", note: "rejeitado em lote" })}>Rejeitar conflitos</Btn>
+                    <Btn variant="danger" onClick={async () => {
+                      const r = await ask({ title: "Rejeitar leituras em conflito?", tone: "danger", confirmLabel: "Rejeitar todas",
+                        message: `Todas as leituras em conflito da sessão ${s.name} serão marcadas como rejeitadas.` });
+                      if (r.ok) void run(`/api/admin/sessions/${s.id}/resolve-conflicts`, { action: "REJECT", note: "rejeitado em lote" });
+                    }}>Rejeitar conflitos</Btn>
                   </>
                 )}
               </div>
@@ -79,6 +89,7 @@ export default function SessionsPage() {
           </tr>
         ))}
       </Table>
+      {dialog}
     </Shell>
   );
 }
