@@ -60,7 +60,13 @@ class ScanResult(ApiModel):
     server_scan_id: uuid.UUID | None = None
     barcode: str | None = None
     barcode_status: str | None = None
+    # Product identity = first 10 characters of the reading
+    product_code: str | None = None
     item_name: str | None = None
+    # Stock of this product after the scan (known products only)
+    current_stock: int | None = None
+    # Loads that became READY because of this scan
+    newly_ready_loads: int | None = None
     sync_state: str | None = None
     server_timestamp: datetime | None = None
     # True when this clientScanId had already been stored (idempotent resend)

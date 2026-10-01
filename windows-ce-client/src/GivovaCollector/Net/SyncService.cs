@@ -19,7 +19,14 @@ namespace GivovaCollector.Net
     public class ScanSyncedEventArgs : EventArgs
     {
         public readonly ScanRecord Record;
-        public ScanSyncedEventArgs(ScanRecord record) { Record = record; }
+        /// <summary>Server answer for this sync (null when the server rejected the record).</summary>
+        public readonly ScanApiResult Result;
+
+        public ScanSyncedEventArgs(ScanRecord record, ScanApiResult result)
+        {
+            Record = record;
+            Result = result;
+        }
     }
 
     /// <summary>
@@ -219,7 +226,7 @@ namespace GivovaCollector.Net
                 return;
             }
             Logger.Info("sync ok id=" + record.ClientScanId + " result=" + result.Result + (result.Replayed ? " (replayed)" : ""));
-            RaiseScanSynced(_store.Get(record.ClientScanId));
+            RaiseScanSynced(_store.Get(record.ClientScanId), result);
         }
 
         /// <summary>Returns true when the pass may continue with the next record.</summary>
@@ -251,7 +258,7 @@ namespace GivovaCollector.Net
                         return false;
                     }
                     Logger.Warn("sync rejected id=" + record.ClientScanId + " " + ex.ErrorCode);
-                    RaiseScanSynced(_store.Get(record.ClientScanId));
+                    RaiseScanSynced(_store.Get(record.ClientScanId), null);
                     return true;
 
                 default:
@@ -336,11 +343,11 @@ namespace GivovaCollector.Net
             }
         }
 
-        private void RaiseScanSynced(ScanRecord record)
+        private void RaiseScanSynced(ScanRecord record, ScanApiResult result)
         {
             EventHandler<ScanSyncedEventArgs> handler = ScanSynced;
             if (handler == null || record == null) return;
-            try { handler(this, new ScanSyncedEventArgs(record)); }
+            try { handler(this, new ScanSyncedEventArgs(record, result)); }
             catch (Exception ex) { Logger.Error("ScanSynced handler", ex); }
         }
     }

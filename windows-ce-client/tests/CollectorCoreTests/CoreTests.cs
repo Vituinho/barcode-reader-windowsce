@@ -213,9 +213,35 @@ namespace GivovaCollector.Tests
             {
                 string dir = Assert.TempDir();
                 ScanProcessor p = NewProcessor(new FailingStore(), dir);
-                ScanOutcome o = p.Process("123\r", DateTime.Now, 0);
+                ScanOutcome o = p.Process("1234567890123\r", DateTime.Now, 0);
                 Assert.Equal(ScanOutcomeKind.Error, o.Kind, "error outcome");
                 Assert.True(o.Record == null, "no record confirmed");
+            });
+
+            TestRunner.Add("product code = first 10 characters, kept as text", delegate
+            {
+                Assert.Equal("6050647134", ProductCode.Normalize("60506471342313480002"), "long logistics label");
+                Assert.Equal("6050647134", ProductCode.Normalize("6050647134"), "exactly 10");
+                Assert.Equal("0012345678", ProductCode.Normalize("00123456789999"), "leading zeroes kept");
+                Assert.Equal("104121A181", ProductCode.Normalize("104121A181XYZ"), "alphanumeric kept");
+                Assert.Equal("6050647134", ProductCode.Normalize("  60506471342313  "), "surrounding spaces trimmed");
+                Assert.True(ProductCode.Normalize("605064713") == null, "9 chars invalid");
+                Assert.True(ProductCode.Normalize(null) == null, "null invalid");
+            });
+
+            TestRunner.Add("processor rejects readings shorter than 10 without queuing", delegate
+            {
+                string dir = Assert.TempDir();
+                JournalScanStore store = new JournalScanStore(dir);
+                store.Open();
+                ScanProcessor p = NewProcessor(store, dir);
+                ScanOutcome shortRead = p.Process("605064713\r", DateTime.Now, 0);
+                Assert.Equal(ScanOutcomeKind.Error, shortRead.Kind, "invalid outcome");
+                Assert.Equal(ScanProcessor.InvalidCodeMessage, shortRead.Message, "message");
+                Assert.Equal(0, store.PendingCount, "nothing queued");
+                ScanOutcome longRead = p.Process("60506471342313480002\r", DateTime.Now, 1000);
+                Assert.Equal("6050647134", longRead.ProductCode, "product code");
+                Assert.Equal("60506471342313480002", store.Get(longRead.Record.ClientScanId).Barcode, "full reading kept");
             });
 
             TestRunner.Add("json roundtrip", delegate

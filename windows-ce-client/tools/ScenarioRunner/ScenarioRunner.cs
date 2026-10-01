@@ -92,18 +92,22 @@ namespace GivovaCollector.Tools
             _adminToken = admin.Token;
             string sessionId = CreateSession("CENARIOS " + _run);
 
-            Run("A online: scan -> local save -> API -> synced -> REGISTRADO", delegate
+            Run("A online: long label -> first 10 chars -> local save -> API -> synced -> stock +1", delegate
             {
                 Collector c = NewCollector(baseDir, "A", real, sessionId);
-                int before = ServerCount("7891234567890");
-                ScanOutcome o = c.Processor.Process("7891234567890\r");
-                Check(o.Kind == ScanOutcomeKind.Saved, "saved locally first");
+                string product = ("SA" + _run.Replace("-", "")).Substring(0, 10);
+                CreateProduct(product, "PRODUTO CENARIO " + _run);
+                string label = product + "2313480002"; // logistics label longer than the product code
+                ScanOutcome o = c.Processor.Process(label + "\r");
+                Check(o.Kind == ScanOutcomeKind.Saved && o.ProductCode == product, "saved locally first, code " + o.ProductCode);
                 Check(c.Store.Get(o.Record.ClientScanId).IsPending, "pending before sync");
                 c.Sync.RunOnce();
                 ScanRecord r = c.Store.Get(o.Record.ClientScanId);
                 Check(r.Status == ScanStatus.Synced && r.ServerResult == "KNOWN", "synced as KNOWN: " + r.Status + "/" + r.ServerResult);
-                Check(r.ItemName == "Colchão Ortobom Orion", "item name: " + r.ItemName);
-                Check(ServerCount("7891234567890") == before + 1, "exactly one new server record");
+                Check(r.ItemName == "PRODUTO CENARIO " + _run, "item name: " + r.ItemName);
+                Check(ServerCount(label) == 1, "exactly one server record");
+                Check(StockOf(product) == 1, "stock +1");
+                Check(c.Processor.Process("123456789\r").Message == ScanProcessor.InvalidCodeMessage, "short reading refused locally");
             });
 
             Run("B unknown barcode accepted, registered UNKNOWN, collector continues", delegate
@@ -272,6 +276,23 @@ namespace GivovaCollector.Tools
             r.ScannedAtDevice = Util.FormatLocal(at);
             r.CreatedAtLocal = r.ScannedAtDevice;
             return r;
+        }
+
+        private static void CreateProduct(string code, string name)
+        {
+            string body = new JsonObjectBuilder().Add("sku", code).Add("name", name).ToString();
+            new ApiClient(_api, 10, "ScenarioRunner").Request("POST", "/api/admin/items", body, _adminToken);
+        }
+
+        private static int StockOf(string code)
+        {
+            string json = new ApiClient(_api, 10, "ScenarioRunner").Request("GET", "/api/inventory?q=" + code, null, _adminToken);
+            foreach (object row in (List<object>)Json.Parse(json))
+            {
+                Dictionary<string, object> o = (Dictionary<string, object>)row;
+                if (Json.GetString(o, "productCode") == code) return Json.GetInt(o, "quantity", -1);
+            }
+            return -1;
         }
 
         private static string CreateSession(string name)

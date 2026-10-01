@@ -63,11 +63,11 @@ def test_unknown_barcode_is_accepted_and_registered(client, seed, op_headers, db
 
 
 def test_barcode_value_is_opaque(client, seed, op_headers, db):
-    for code in ["000123", "abc-DEF/01", "(01)07891234567890(10)LOTE 7", "0000"]:
+    for code in ["0001234567890", "abc-DEF/01", "(01)07891234567890(10)LOTE 7", "0000000000"]:
         r = client.post("/api/scans", json=scan_payload(seed, barcode=code), headers=op_headers)
         assert r.status_code == 200 and r.json()["barcode"] == code
     codes = set(db.scalars(select(Barcode.code)))
-    assert {"000123", "abc-DEF/01", "(01)07891234567890(10)LOTE 7", "0000"} <= codes
+    assert {"0001234567890", "abc-DEF/01", "(01)07891234567890(10)LOTE 7", "0000000000"} <= codes
 
 
 def test_blank_barcode_rejected(client, seed, op_headers):
@@ -179,9 +179,9 @@ def test_unknown_barcode_identified_later(client, seed, op_headers, admin_header
 
 
 def test_batch_processes_each_scan_independently(client, seed, op_headers, db):
-    good = scan_payload(seed, barcode="B-1", at=later(0))
-    other_device = scan_payload(seed, barcode="B-2", device_id="GVT-CE-002")
-    unknown = scan_payload(seed, barcode="B-3", at=later(5))
+    good = scan_payload(seed, barcode="BATCH-CODE-1", at=later(0))
+    other_device = scan_payload(seed, barcode="BATCH-CODE-2", device_id="GVT-CE-002")
+    unknown = scan_payload(seed, barcode="BATCH-CODE-3", at=later(5))
     r = client.post("/api/scans/batch", json={"scans": [good, other_device, unknown, good]}, headers=op_headers)
     results = r.json()["results"]
     assert [x["accepted"] for x in results] == [True, False, True, True]
@@ -206,6 +206,6 @@ def test_heartbeat_and_device_config(client, seed, op_headers, admin_headers, db
 
 
 def test_csv_export(client, seed, op_headers, admin_headers):
-    client.post("/api/scans", json=scan_payload(seed, barcode="0012345"), headers=op_headers)
+    client.post("/api/scans", json=scan_payload(seed, barcode="0012345678"), headers=op_headers)
     r = client.get("/api/admin/scans/export.csv", headers=admin_headers)
-    assert r.status_code == 200 and "0012345" in r.text and "client_scan_id" in r.text
+    assert r.status_code == 200 and "0012345678" in r.text and "client_scan_id" in r.text

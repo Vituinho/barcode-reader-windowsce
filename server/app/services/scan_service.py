@@ -1,11 +1,13 @@
 """Scan intake: idempotent by clientScanId, never loses an accepted payload.
 
 Rules (in order):
-1. Same clientScanId already stored -> return the stored result (idempotent resend).
-2. Every non-blank barcode is accepted; unknown values are registered as UNKNOWN.
-3. Session closed / missing -> stored as a conflict for administrative resolution.
-4. Same device+operator+session+barcode within the duplicate window -> stored as DUPLICATE,
-   not counted as a business scan.
+1. Same clientScanId already stored -> return the stored result (idempotent resend, never adds stock twice).
+2. The product is identified by the first 10 characters of the reading (cProd); the full reading is kept.
+   Readings shorter than 10 characters are refused (BARCODE_TOO_SHORT).
+3. Unknown product codes are stored as UNKNOWN scans and add no stock.
+4. Session closed / missing -> stored as a conflict for administrative resolution (no stock until accepted).
+5. Same device+operator+session+barcode within the duplicate window -> stored as DUPLICATE (no stock).
+6. Otherwise a known product scan adds +1 stock (SCAN_IN) in the same transaction as the scan row.
 """
 import uuid
 
@@ -15,15 +17,17 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import Conflict, DomainError, Forbidden
 from app.core.timeutil import device_time_to_utc, utcnow
-from app.models import CollectionSession, Device, Scan
+from app.models import Barcode, CollectionSession, Device, InventoryMovement, Scan
 from app.repositories.repos import BarcodeRepo, DeviceRepo, ScanRepo, SessionRepo, UserRepo
 from app.schemas.collector import ScanIn, ScanResult
+from app.services import inventory_service, load_service
 from app.services.auth_service import AuthContext
 
 
-def to_result(scan: Scan, replayed: bool = False) -> ScanResult:
+def to_result(scan: Scan, replayed: bool = False, current_stock: int | None = None,
+              newly_ready_loads: int | None = None) -> ScanResult:
     accepted_state = scan.sync_state == Scan.STATE_ACCEPTED
-    item = scan.barcode.item
+    product = scan.product
     return ScanResult(
         accepted=True,
         result=scan.result if accepted_state else scan.sync_state,
@@ -31,7 +35,10 @@ def to_result(scan: Scan, replayed: bool = False) -> ScanResult:
         server_scan_id=scan.id,
         barcode=scan.barcode.code,
         barcode_status=scan.barcode.status,
-        item_name=item.name if item else None,
+        product_code=scan.product_code,
+        item_name=product.name if product else None,
+        current_stock=current_stock,
+        newly_ready_loads=newly_ready_loads,
         sync_state=scan.sync_state,
         server_timestamp=scan.received_at_server,
         replayed=replayed,
@@ -47,10 +54,11 @@ def _check_device(db: Session, payload_device_id: str) -> Device:
     return device
 
 
-def _replay(existing: Scan, payload: ScanIn) -> ScanResult:
+def _replay(db: Session, existing: Scan, payload: ScanIn) -> ScanResult:
     if existing.device_id != payload.device_id or existing.barcode.code != payload.barcode:
         raise Conflict("CLIENT_SCAN_ID_REUSED", "clientScanId already used for a different scan")
-    return to_result(existing, replayed=True)
+    stock = inventory_service.balance_of(db, existing.product_id) if existing.product_id else None
+    return to_result(existing, replayed=True, current_stock=stock)
 
 
 def _resolve_session(db: Session, raw_session_id: str | None) -> tuple[CollectionSession | None, str | None]:
@@ -76,11 +84,14 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
 
     existing = scans.by_client_id(payload.client_scan_id)
     if existing is not None:
-        return _replay(existing, payload)
+        return _replay(db, existing, payload)
 
     device = _check_device(db, payload.device_id)
     if len(payload.barcode) > settings.max_barcode_length:
         raise DomainError("BARCODE_TOO_LONG", "Barcode exceeds maximum length", status_code=422)
+    product_code = inventory_service.normalize_product_code(payload.barcode)
+    if product_code is None:
+        raise DomainError("BARCODE_TOO_SHORT", "Código inválido: mínimo de 10 caracteres", status_code=422)
 
     operator_id = payload.operator_id
     if operator_id is None or UserRepo(db).get(operator_id) is None:
@@ -88,8 +99,13 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
 
     scanned_at = device_time_to_utc(payload.scanned_at_device)
     now = utcnow()
+    current_stock = None
+    newly_ready = None
     try:
+        product = inventory_service.product_by_code(db, product_code)
         barcode = BarcodeRepo(db).get_or_create(payload.barcode, scanned_at)
+        if product is not None and barcode.item_id is None:
+            barcode.item_id, barcode.status = product.id, Barcode.STATUS_KNOWN
         session, conflict_state = _resolve_session(db, payload.session_id)
 
         state = conflict_state or Scan.STATE_ACCEPTED
@@ -112,12 +128,23 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
             source=payload.source,
             scanned_at_device=scanned_at,
             received_at_server=now,
-            result=barcode.status,
+            product_code=product_code,
+            product_id=product.id if product else None,
+            result=Scan.RESULT_KNOWN if product else Scan.RESULT_UNKNOWN,
             sync_state=state,
         )
         with db.begin_nested():
             db.add(scan)
             db.flush()
+        if product is not None:
+            if state == Scan.STATE_ACCEPTED:
+                # Same transaction as the scan row: both are committed or neither.
+                current_stock = inventory_service.apply_movement(
+                    db, product.id, InventoryMovement.SCAN_IN, 1, scan_id=scan.id, device_id=device.id,
+                    user_id=operator_id, now=now)
+                newly_ready = load_service.newly_ready_count(db, product.id, current_stock)
+            else:
+                current_stock = inventory_service.balance_of(db, product.id)
         device.last_seen_at = now
         db.commit()
     except IntegrityError:
@@ -126,10 +153,10 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
         existing = scans.by_client_id(payload.client_scan_id)
         if existing is None:
             raise
-        return _replay(existing, payload)
+        return _replay(db, existing, payload)
 
     db.refresh(scan)
-    return to_result(scan)
+    return to_result(scan, current_stock=current_stock, newly_ready_loads=newly_ready)
 
 
 def submit_batch(db: Session, payloads: list[ScanIn], auth: AuthContext) -> list[ScanResult]:

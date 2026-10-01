@@ -56,7 +56,7 @@ def test_release_metadata_is_validated(client, admin_headers):
         {"downloadUrl": "http://insecure.example.com/f.zip"},
         {"downloadUrl": "https://user:pass@example.com/f.zip"},
         {"downloadUrl": "file:///C:/build/f.zip"},
-        {"fileName": "..\..\secret.env"},
+        {"fileName": r"..\..\secret.env"},
         {"fileName": "C:/build/desktop/GivovaCollector.exe"},
         {"version": "1.0"},
         {"sha256": "xyz"},

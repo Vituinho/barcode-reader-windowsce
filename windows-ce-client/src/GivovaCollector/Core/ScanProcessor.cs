@@ -15,6 +15,8 @@ namespace GivovaCollector.Core
         public ScanOutcomeKind Kind;
         public ScanRecord Record;
         public string Barcode;
+        /// <summary>First 10 characters (product code) when the reading is valid.</summary>
+        public string ProductCode;
         public string Message;
 
         public static ScanOutcome Of(ScanOutcomeKind kind, string barcode, string message)
@@ -35,6 +37,7 @@ namespace GivovaCollector.Core
     public class ScanProcessor
     {
         public const int MaxBarcodeLength = 512;
+        public const string InvalidCodeMessage = "CÓDIGO INVÁLIDO";
 
         private readonly ILocalScanStore _store;
         private readonly AppConfig _config;
@@ -62,6 +65,13 @@ namespace GivovaCollector.Core
             if (barcode.Length == 0) return ScanOutcome.Of(ScanOutcomeKind.Ignored, barcode, null);
             if (barcode.Length > MaxBarcodeLength)
                 return ScanOutcome.Of(ScanOutcomeKind.Error, Util.Shorten(barcode, 40), "CÓDIGO MUITO LONGO");
+            string productCode = Core.ProductCode.Normalize(barcode);
+            if (productCode == null)
+            {
+                // Shorter than 10 characters: not a product label. Not queued.
+                Logger.Info("scan rejected locally: shorter than " + Core.ProductCode.Length + " chars");
+                return ScanOutcome.Of(ScanOutcomeKind.Error, barcode, InvalidCodeMessage);
+            }
             if (!_state.HasOperator) return ScanOutcome.Of(ScanOutcomeKind.Error, barcode, "SEM LOGIN");
             if (!_state.HasSession) return ScanOutcome.Of(ScanOutcomeKind.Error, barcode, "SEM SESSÃO");
 
@@ -72,7 +82,9 @@ namespace GivovaCollector.Core
             if (_duplicates.IsDuplicate(key, nowTicks))
             {
                 Logger.Info("scan duplicate ignored (window " + _config.DuplicateWindowSeconds + "s)");
-                return ScanOutcome.Of(ScanOutcomeKind.Duplicate, barcode, null);
+                ScanOutcome duplicate = ScanOutcome.Of(ScanOutcomeKind.Duplicate, barcode, null);
+                duplicate.ProductCode = productCode;
+                return duplicate;
             }
 
             ScanRecord r = new ScanRecord();
@@ -103,6 +115,7 @@ namespace GivovaCollector.Core
             Logger.Info("scan saved locally id=" + r.ClientScanId);
             ScanOutcome outcome = ScanOutcome.Of(ScanOutcomeKind.Saved, barcode, null);
             outcome.Record = r;
+            outcome.ProductCode = productCode;
             return outcome;
         }
     }

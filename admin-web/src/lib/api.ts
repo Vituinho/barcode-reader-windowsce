@@ -52,6 +52,29 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return (await res.json()) as T;
 }
 
+/** multipart/form-data upload (the browser sets the boundary header). */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: form });
+  if (res.status === 401) {
+    setToken(null);
+    window.location.href = "/login";
+  }
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      message = data.message ?? JSON.stringify(data.detail ?? data);
+    } catch {
+      /* non-JSON */
+    }
+    throw new ApiError(res.status, undefined, message);
+  }
+  return (await res.json()) as T;
+}
+
 export async function downloadFile(path: string, fallbackName: string) {
   const res = await request(path);
   const disposition = res.headers.get("Content-Disposition") ?? "";

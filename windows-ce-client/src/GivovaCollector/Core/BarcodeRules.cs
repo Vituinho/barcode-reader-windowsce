@@ -37,6 +37,24 @@ namespace GivovaCollector.Core
         }
     }
 
+    /// <summary>
+    /// Product identity rule (server-authoritative, mirrored here for immediate feedback): the product code is
+    /// the FIRST 10 characters of the reading after trimming surrounding whitespace. Logistics labels may be
+    /// much longer; the full reading is still stored and sent as rawBarcode. Never parsed as a number.
+    /// </summary>
+    public static class ProductCode
+    {
+        public const int Length = 10;
+
+        /// <summary>First 10 characters, or null when the reading is shorter (invalid code).</summary>
+        public static string Normalize(string barcode)
+        {
+            if (barcode == null) return null;
+            string value = barcode.Trim();
+            return value.Length < Length ? null : value.Substring(0, Length);
+        }
+    }
+
     public static class ScanIdGenerator
     {
         /// <summary>

@@ -6,8 +6,10 @@ database enum migrations. Allowed values are listed as constants on each class.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid,
-                        func, text)
+from decimal import Decimal
+
+from sqlalchemy import (JSON, BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+                        UniqueConstraint, Uuid, func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin, new_uuid
@@ -66,6 +68,9 @@ class CollectionSession(CreatedAtMixin, Base):
 
 
 class Item(CreatedAtMixin, Base):
+    """Product. `sku` is the product code (NF-e cProd) matched against the first 10 scanned characters.
+    EAN is optional metadata only and never used for identification."""
+
     __tablename__ = "items"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
@@ -73,6 +78,11 @@ class Item(CreatedAtMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(10))
+    ean: Mapped[str | None] = mapped_column(String(14))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class Barcode(CreatedAtMixin, Base):
@@ -125,9 +135,14 @@ class Scan(Base):
     resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     resolution_note: Mapped[str | None] = mapped_column(Text)
 
+    # First 10 characters of the scanned value (product code); NULL for scans older than this rule
+    product_code: Mapped[str | None] = mapped_column(String(64), index=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id"))
+
     barcode: Mapped[Barcode] = relationship(lazy="joined")
     operator: Mapped[User | None] = relationship(foreign_keys=[operator_id], lazy="joined")
     session: Mapped[CollectionSession | None] = relationship(lazy="joined")
+    product: Mapped[Item | None] = relationship(lazy="joined")
 
     __table_args__ = (
         # Duplicate-window lookup
@@ -180,3 +195,139 @@ class SoftwareRelease(Base):
         Index("uq_software_releases_active_platform", "platform", unique=True,
               postgresql_where=text("active")),
     )
+
+
+class Load(Base):
+    """Load / route (Carga) defined by imported NF-e XMLs. READY is computed from stock, never stored."""
+
+    __tablename__ = "loads"
+    STATUS_PENDING = "PENDING"
+    STATUS_READY = "READY"  # computed only
+    STATUS_DISPATCHED = "DISPATCHED"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    external_code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=STATUS_PENDING, index=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dispatched_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    dispatched_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+class Invoice(Base):
+    """Imported NF-e. The access key (chave de acesso) makes imports idempotent."""
+
+    __tablename__ = "invoices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    access_key: Mapped[str] = mapped_column(String(44), unique=True, nullable=False)
+    invoice_number: Mapped[str | None] = mapped_column(String(20))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    load_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("loads.id"), nullable=False, index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200))
+    customer_document: Mapped[str | None] = mapped_column(String(20))
+    city: Mapped[str | None] = mapped_column(String(100))
+    state: Mapped[str | None] = mapped_column(String(2))
+    order_number: Mapped[str | None] = mapped_column(String(40))
+    external_customer_code: Mapped[str | None] = mapped_column(String(40))
+    volume_count: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))
+    volume_species: Mapped[str | None] = mapped_column(String(60))
+    source_file_name: Mapped[str | None] = mapped_column(String(255))
+    # Import warnings (list of {code, message}), e.g. NON_DISCRETE_UNIT, QVOL_MISMATCH
+    warnings: Mapped[list | None] = mapped_column(JSON(none_as_null=True))
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    imported_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+
+class InvoiceItem(Base):
+    """NF-e product line exactly as in the XML (audit): qCom/uCom are never converted."""
+
+    __tablename__ = "invoice_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"), nullable=False, index=True)
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), nullable=False)
+    product_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(200))
+    ean: Mapped[str | None] = mapped_column(String(14))
+    unit: Mapped[str | None] = mapped_column(String(10))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    # True when quantity counts discrete units that match scanned volumes 1:1
+    discrete: Mapped[bool] = mapped_column(nullable=False)
+
+
+class LoadItem(Base):
+    """Aggregated requirement of one product for one load. required_quantity is NULL while it cannot be
+    derived safely (non-discrete unit / qVol mismatch) until an admin sets the physical volume count."""
+
+    __tablename__ = "load_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    load_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("loads.id"), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), nullable=False)
+    required_quantity: Mapped[int | None] = mapped_column(Integer)
+    commercial_quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(10))
+    needs_review: Mapped[bool] = mapped_column(default=False, nullable=False)
+    review_reason: Mapped[str | None] = mapped_column(String(200))
+    resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+
+    product: Mapped[Item] = relationship(lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("load_id", "product_id", name="uq_load_items_load_product"),
+        CheckConstraint("required_quantity IS NULL OR required_quantity > 0", name="required_positive"),
+    )
+
+
+class InventoryMovement(Base):
+    """Append-only stock ledger. quantity is signed (+in / -out)."""
+
+    __tablename__ = "inventory_movements"
+    SCAN_IN = "SCAN_IN"
+    DISPATCH_OUT = "DISPATCH_OUT"
+    ADJUSTMENT_IN = "ADJUSTMENT_IN"
+    ADJUSTMENT_OUT = "ADJUSTMENT_OUT"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # One scan produces at most one stock entry: offline retries never add stock twice
+    scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scans.id"), unique=True)
+    load_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("loads.id"), index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    device_id: Mapped[str | None] = mapped_column(String(40))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    product: Mapped[Item] = relationship(lazy="joined")
+    created_by: Mapped[User | None] = relationship(lazy="joined")
+
+    __table_args__ = (
+        Index("ix_inventory_movements_product_created", "product_id", "created_at"),
+        CheckConstraint("quantity <> 0", name="quantity_nonzero"),
+    )
+
+
+class InventoryBalance(Base):
+    """Current stock per product, updated in the same transaction as each movement. Rows are locked
+    (SELECT ... FOR UPDATE) during dispatch; the CHECK makes negative stock impossible."""
+
+    __tablename__ = "inventory_balances"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (CheckConstraint("quantity >= 0", name="non_negative"),)

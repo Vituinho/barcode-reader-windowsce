@@ -7,11 +7,14 @@ import { getToken, setToken } from "@/lib/api";
 
 const NAV = [
   ["/dashboard", "Painel"],
+  ["/estoque", "Estoque"],
+  ["/cargas", "Cargas"],
+  ["/expedicoes", "Expedições"],
   ["/scans", "Leituras"],
-  ["/sessions", "Sessões"],
+  ["/barcodes/unknown", "Códigos desconhecidos"],
+  ["/importar", "Importar XML"],
   ["/items", "Itens"],
-  ["/barcodes", "Códigos"],
-  ["/barcodes/unknown", "Desconhecidos"],
+  ["/sessions", "Sessões"],
   ["/devices", "Coletores"],
   ["/users", "Usuários"],
   ["/downloads", "Downloads"],
@@ -108,6 +111,14 @@ const BADGE: Record<string, string> = {
   REJECTED: "bg-red-100 text-red-800",
   SESSION_CLOSED: "bg-purple-100 text-purple-800",
   SESSION_NOT_FOUND: "bg-purple-100 text-purple-800",
+  READY: "bg-green-100 text-green-800",
+  PENDING: "bg-amber-100 text-amber-800",
+  DISPATCHED: "bg-slate-200 text-slate-700",
+  REVIEW: "bg-purple-100 text-purple-800",
+  SCAN_IN: "bg-green-100 text-green-800",
+  DISPATCH_OUT: "bg-slate-200 text-slate-700",
+  ADJUSTMENT_IN: "bg-blue-100 text-blue-800",
+  ADJUSTMENT_OUT: "bg-red-100 text-red-800",
 };
 
 export function Badge({ value }: { value: string }) {

@@ -18,3 +18,8 @@ windows-ce-client/**/obj/
 windows-ce-client/build/
 windows-ce-client/**/*.user
 windows-ce-client/**/*.suo
+
+# Customer NF-e data must never be committed
+*-nfe.xml
+xml-*/
+xml-*.zip

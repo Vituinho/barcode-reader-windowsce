@@ -130,6 +130,7 @@ class ScanOut(ApiModel):
     barcode: str
     raw_barcode: str
     barcode_status: str
+    product_code: str | None = None
     item_name: str | None = None
     result: str
     sync_state: str
@@ -150,6 +151,12 @@ class ScanResolve(ApiModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+class ReadyLoad(ApiModel):
+    id: uuid.UUID
+    external_code: str
+    volumes: int
+
+
 class DashboardOut(ApiModel):
     scans_today: int
     unknown_scans_today: int
@@ -159,4 +166,10 @@ class DashboardOut(ApiModel):
     devices_online: int
     devices_offline: int
     devices_disabled: int
+    stock_total: int = 0
+    loads_pending: int = 0
+    loads_ready: int = 0
+    loads_review: int = 0
+    loads_dispatched_today: int = 0
+    ready_loads: list[ReadyLoad] = []
     server_time: datetime

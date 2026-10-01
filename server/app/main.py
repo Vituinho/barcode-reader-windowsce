@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin, collector, releases
+from app.api import admin, collector, logistics, releases
 from app.core.config import get_settings
 from app.core.errors import DomainError
 from app.core.timeutil import utcnow
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(collector.router)
     app.include_router(admin.router)
     app.include_router(releases.router)
+    app.include_router(logistics.router)
     return app
 
 

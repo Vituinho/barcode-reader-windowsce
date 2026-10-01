@@ -13,6 +13,13 @@ from app.services.auth_service import AuthContext
 
 
 def lookup(db: Session, code: str) -> ItemLookupOut:
+    from app.services.inventory_service import normalize_product_code, product_by_code
+
+    product_code = normalize_product_code(code)
+    product = product_by_code(db, product_code) if product_code else None
+    if product is not None:
+        return ItemLookupOut(barcode=code, status=Barcode.STATUS_KNOWN, item_id=product.id, item_name=product.name,
+                             sku=product.sku)
     barcode = BarcodeRepo(db).by_code(code)
     if barcode is None or barcode.item is None:
         return ItemLookupOut(barcode=code, status=Barcode.STATUS_UNKNOWN)

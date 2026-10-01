@@ -64,6 +64,10 @@ namespace GivovaCollector.Net
         public string Result;
         public string ServerScanId;
         public string ItemName;
+        /// <summary>Product code (first 10 chars) as identified by the server.</summary>
+        public string ProductCode;
+        /// <summary>Stock after this scan, or -1 when not applicable (unknown product).</summary>
+        public int CurrentStock = -1;
         public bool Replayed;
         public string Error;
         public string Message;

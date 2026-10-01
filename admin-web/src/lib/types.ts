@@ -84,6 +84,12 @@ export interface Dashboard {
   devicesOnline: number;
   devicesOffline: number;
   devicesDisabled: number;
+  stockTotal: number;
+  loadsPending: number;
+  loadsReady: number;
+  loadsReview: number;
+  loadsDispatchedToday: number;
+  readyLoads: { id: string; externalCode: string; volumes: number }[];
   serverTime: string;
 }
 
@@ -102,4 +108,139 @@ export interface SoftwareRelease {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export type LoadStatus = "PENDING" | "READY" | "DISPATCHED";
+
+export interface LoadSummary {
+  id: string;
+  externalCode: string;
+  status: LoadStatus;
+  needsReview: boolean;
+  requiredVolumes: number;
+  availableVolumes: number;
+  missingVolumes: number;
+  progress: number;
+  productLines: number;
+  invoiceCount: number;
+  customerCount: number;
+  warningInvoices: number;
+  importedAt: string;
+  dispatchedAt: string | null;
+  dispatchedByName: string | null;
+}
+
+export interface LoadRequirement {
+  id: string;
+  productCode: string | null;
+  description: string;
+  unit: string | null;
+  requiredQuantity: number | null;
+  commercialQuantity: number;
+  stock: number;
+  available: number;
+  missing: number;
+  needsReview: boolean;
+  reviewReason: string | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
+}
+
+export interface InvoiceLine {
+  lineNumber: number;
+  productCode: string;
+  description: string | null;
+  ean: string | null;
+  unit: string | null;
+  quantity: number;
+  discrete: boolean;
+}
+
+export interface LoadInvoice {
+  id: string;
+  accessKey: string;
+  invoiceNumber: string | null;
+  issuedAt: string | null;
+  customerName: string | null;
+  customerDocument: string | null;
+  city: string | null;
+  state: string | null;
+  orderNumber: string | null;
+  externalCustomerCode: string | null;
+  volumeCount: number | null;
+  volumeSpecies: string | null;
+  sourceFileName: string | null;
+  warnings: { code: string; message: string }[];
+  lines: InvoiceLine[];
+}
+
+export interface Movement {
+  id: string;
+  productCode: string | null;
+  description: string;
+  type: "SCAN_IN" | "DISPATCH_OUT" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT";
+  quantity: number;
+  reason: string | null;
+  deviceId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  loadId: string | null;
+  scanId: string | null;
+}
+
+export interface LoadDetail extends LoadSummary {
+  requirements: LoadRequirement[];
+  invoices: LoadInvoice[];
+  dispatchMovements: Movement[];
+}
+
+export interface InventoryRow {
+  productCode: string;
+  description: string;
+  unit: string | null;
+  ean: string | null;
+  quantity: number;
+  lastInAt: string | null;
+  lastOutAt: string | null;
+}
+
+export interface DispatchRow {
+  loadId: string;
+  externalCode: string;
+  dispatchedAt: string | null;
+  dispatchedByName: string | null;
+  volumes: number;
+  productLines: number;
+}
+
+export interface ImportIssue {
+  file: string;
+  code: string;
+  message: string;
+  accessKey?: string | null;
+  load?: string | null;
+}
+
+export interface ImportReport {
+  filesProcessed: number;
+  xmlAccepted: number;
+  duplicatesSkipped: number;
+  invoicesImported: number;
+  productsCreated: number;
+  productsUpdated: number;
+  loadsCreated: string[];
+  loadsUpdated: string[];
+  ignoredFiles: string[];
+  invalid: ImportIssue[];
+  warnings: ImportIssue[];
+}
+
+export interface UnknownCode {
+  productCode: string;
+  occurrences: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastRawBarcode: string | null;
+  lastDeviceId: string | null;
+  lastOperatorName: string | null;
 }

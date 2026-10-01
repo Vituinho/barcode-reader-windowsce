@@ -102,6 +102,8 @@ namespace GivovaCollector.Net
             r.Result = Json.GetString(o, "result");
             r.ServerScanId = Json.GetString(o, "serverScanId");
             r.ItemName = Json.GetString(o, "itemName");
+            r.ProductCode = Json.GetString(o, "productCode");
+            r.CurrentStock = Json.GetInt(o, "currentStock", -1);
             r.Replayed = Json.GetBool(o, "replayed", false);
             r.Error = Json.GetString(o, "error");
             r.Message = Json.GetString(o, "message");

@@ -42,7 +42,7 @@ def schema():
 @pytest.fixture(autouse=True)
 def clean_db(schema):
     with get_engine().begin() as conn:
-        conn.execute(text("TRUNCATE scans, barcodes, items, audit_logs, collection_sessions, devices, users, software_releases CASCADE"))
+        conn.execute(text("TRUNCATE inventory_movements, inventory_balances, load_items, invoice_items, invoices, loads, scans, barcodes, items, audit_logs, collection_sessions, devices, users, software_releases CASCADE"))
     yield
 
 
@@ -60,7 +60,8 @@ def seed(db):
               password_hash=hash_password(PASSWORD))
     db.add_all([admin, op, Device(id="GVT-CE-001", name="Coletor 1"), Device(id="GVT-CE-002", name="Coletor 2")])
     session = CollectionSession(name="RECEBIMENTO TESTE", status=CollectionSession.STATUS_OPEN)
-    item = Item(sku="COL-ORION", name="Colchão Ortobom Orion")
+    # Product code = first 10 characters of the scanned value
+    item = Item(sku="7891234567", name="Colchão Ortobom Orion", unit="UN")
     db.add_all([session, item])
     db.flush()
     db.add(Barcode(code="7891234567890", item_id=item.id, status=Barcode.STATUS_KNOWN))

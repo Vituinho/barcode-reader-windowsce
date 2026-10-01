@@ -12,11 +12,12 @@ from app.core.config import get_settings
 from app.core.errors import Conflict, DomainError, NotFound
 from app.core.security import hash_password
 from app.core.timeutil import local_day_start_utc, utcnow
-from app.models import Barcode, CollectionSession, Scan, User
+from app.models import Barcode, CollectionSession, InventoryMovement, Item, Scan, User
 from app.repositories.repos import AuditRepo, DeviceRepo, ScanFilter, ScanRepo, SessionRepo, UserRepo
 from app.schemas.admin import (DashboardOut, ScanOut, ScanPage, SessionAdminOut, SessionCreate, UserCreate,
                                UserOut, UserUpdate)
 from app.services.auth_service import AuthContext
+from app.services import inventory_service, load_service
 from app.services.device_service import connectivity
 
 
@@ -107,13 +108,19 @@ def update_user(db: Session, user_id: uuid.UUID, data: UserUpdate, auth: AuthCon
 
 # ---- scans ----------------------------------------------------------------------------------
 
+def _item_name(s: Scan) -> str | None:
+    if s.product is not None:
+        return s.product.name
+    return s.barcode.item.name if s.barcode.item else None
+
+
 def scan_out(s: Scan) -> ScanOut:
     return ScanOut(
         id=s.id, client_scan_id=s.client_scan_id, device_id=s.device_id, operator_id=s.operator_id,
         operator_name=s.operator.full_name if s.operator else None, session_id=s.session_id,
         session_name=s.session.name if s.session else None, requested_session_id=s.requested_session_id,
         barcode=s.barcode.code, raw_barcode=s.raw_barcode, barcode_status=s.barcode.status,
-        item_name=s.barcode.item.name if s.barcode.item else None, result=s.result, sync_state=s.sync_state,
+        product_code=s.product_code, item_name=_item_name(s), result=s.result, sync_state=s.sync_state,
         source=s.source, scanned_at_device=s.scanned_at_device, received_at_server=s.received_at_server,
         resolved_at=s.resolved_at, resolution_note=s.resolution_note,
     )
@@ -125,7 +132,7 @@ def query_scans(db: Session, flt: ScanFilter, limit: int, offset: int) -> ScanPa
 
 
 CSV_COLUMNS = ["server_scan_id", "client_scan_id", "device_id", "operator", "session", "barcode",
-               "barcode_status", "item_name", "result", "sync_state", "scanned_at_device",
+               "product_code", "barcode_status", "item_name", "result", "sync_state", "scanned_at_device",
                "received_at_server"]
 
 
@@ -138,7 +145,8 @@ def export_scans_csv(db: Session, flt: ScanFilter) -> Iterator[str]:
     for s in ScanRepo(db).iterate(flt):
         writer.writerow([
             s.id, s.client_scan_id, s.device_id, s.operator.full_name if s.operator else "",
-            s.session.name if s.session else "", s.barcode.code, s.barcode.status, s.barcode.item.name if s.barcode.item else "", s.result,
+            s.session.name if s.session else "", s.barcode.code, s.product_code or "", s.barcode.status,
+            _item_name(s) or "", s.result,
             s.sync_state, s.scanned_at_device.astimezone(tz).isoformat(),
             s.received_at_server.astimezone(tz).isoformat(),
         ])
@@ -157,6 +165,11 @@ def resolve_scan(db: Session, scan: Scan, action: str, note: str | None, auth: A
     scan.resolved_at = utcnow()
     scan.resolved_by_id = auth.user.id
     scan.resolution_note = note
+    if scan.sync_state == Scan.STATE_ACCEPTED and scan.product_id is not None and db.scalar(
+            select(InventoryMovement.id).where(InventoryMovement.scan_id == scan.id)) is None:
+        # Accepted late: the physical volume now counts as stock (once; scan_id is unique in the ledger).
+        inventory_service.apply_movement(db, scan.product_id, InventoryMovement.SCAN_IN, 1, scan_id=scan.id,
+                                         device_id=scan.device_id, user_id=auth.user.id)
     AuditRepo(db).add("SCAN_CONFLICT_RESOLVED", actor_user_id=auth.user.id, entity_type="scan",
                       entity_id=str(scan.id), details={"from": previous, "to": scan.sync_state, "note": note})
 
@@ -192,12 +205,41 @@ def dashboard(db: Session) -> DashboardOut:
     return DashboardOut(
         scans_today=db.scalar(today) or 0,
         unknown_scans_today=db.scalar(today.where(Scan.result == Scan.RESULT_UNKNOWN)) or 0,
-        unknown_barcodes=db.scalar(select(func.count()).select_from(Barcode)
-                                   .where(Barcode.status == Barcode.STATUS_UNKNOWN)) or 0,
+        unknown_barcodes=db.scalar(select(func.count(func.distinct(Scan.product_code))).where(
+            Scan.result == Scan.RESULT_UNKNOWN, Scan.product_code.is_not(None),
+            ~select(Item.id).where(Item.sku == Scan.product_code).exists())) or 0,
         conflicts_open=db.scalar(select(func.count()).select_from(Scan)
                                  .where(Scan.sync_state.in_(Scan.CONFLICT_STATES))) or 0,
         open_sessions=db.scalar(select(func.count()).select_from(CollectionSession)
                                 .where(CollectionSession.status == CollectionSession.STATUS_OPEN)) or 0,
         devices_online=states["ONLINE"], devices_offline=states["OFFLINE"], devices_disabled=states["DISABLED"],
         server_time=utcnow(),
+        **load_service.dashboard_counts(db),
     )
+
+
+def unknown_codes(db: Session, q: str | None = None, limit: int = 500) -> list[dict]:
+    """Scanned product codes (first 10 chars) that match no product, grouped with their occurrences."""
+    still_unknown = ~select(Item.id).where(Item.sku == Scan.product_code).exists()
+    base = [Scan.result == Scan.RESULT_UNKNOWN, Scan.product_code.is_not(None), still_unknown]
+    if q:
+        base.append(Scan.product_code.ilike(f"%{q.strip()}%"))
+    groups = db.execute(
+        select(Scan.product_code, func.count(), func.min(Scan.received_at_server), func.max(Scan.received_at_server))
+        .where(*base).group_by(Scan.product_code).order_by(func.max(Scan.received_at_server).desc()).limit(limit)
+    ).all()
+    if not groups:
+        return []
+    rank = func.row_number().over(partition_by=Scan.product_code,
+                                  order_by=Scan.received_at_server.desc()).label("rank")
+    ranked = (select(Scan.id, rank).where(*base, Scan.product_code.in_([g[0] for g in groups]))).subquery()
+    latest = db.scalars(select(Scan).join(ranked, ranked.c.id == Scan.id).where(ranked.c.rank == 1)).unique().all()
+    last_by_code = {s.product_code: s for s in latest}
+    out = []
+    for code, count, first_at, last_at in groups:
+        last = last_by_code.get(code)
+        out.append({"product_code": code, "occurrences": count, "first_seen_at": first_at, "last_seen_at": last_at,
+                    "last_raw_barcode": last.raw_barcode if last else None,
+                    "last_device_id": last.device_id if last else None,
+                    "last_operator_name": last.operator.full_name if last and last.operator else None})
+    return out

@@ -272,12 +272,13 @@ namespace GivovaCollector.UI
                     break;
 
                 default:
-                    SetStatus("ERRO\n" + outcome.Message, Theme.Error);
+                    SetStatus(outcome.Message == ScanProcessor.InvalidCodeMessage ? "CÓDIGO\nINVÁLIDO" : "ERRO\n" + outcome.Message,
+                              Theme.Error);
                     _lblItem.Text = "";
                     DeviceServices.PlayFeedback(FeedbackKind.Error);
                     break;
             }
-            _lblBarcode.Text = Util.Shorten(outcome.Barcode, 40);
+            _lblBarcode.Text = outcome.ProductCode != null ? outcome.ProductCode : Util.Shorten(outcome.Barcode, 40);
             _lblTime.Text = DateTime.Now.ToString("HH:mm:ss");
             RefreshInfo();
             FocusInput();
@@ -286,10 +287,11 @@ namespace GivovaCollector.UI
         private void OnScanSynced(object sender, ScanSyncedEventArgs e)
         {
             ScanRecord record = e.Record;
-            Ui.Post(this, delegate { ApplySynced(record); });
+            ScanApiResult answer = e.Result;
+            Ui.Post(this, delegate { ApplySynced(record, answer); });
         }
 
-        private void ApplySynced(ScanRecord record)
+        private void ApplySynced(ScanRecord record, ScanApiResult answer)
         {
             for (int i = 0; i < _recent.Count; i++)
                 if (_recent[i].ClientScanId == record.ClientScanId) _recent[i] = record;
@@ -299,9 +301,13 @@ namespace GivovaCollector.UI
                 string result = record.ServerResult;
                 if (record.Status == ScanStatus.Rejected) SetStatus("ERRO\nREJEITADO", Theme.Error);
                 else if (record.Status == ScanStatus.Conflict) SetStatus("SESSÃO FECHADA\nP/ REVISÃO", Theme.Conflict);
-                else if (result == "KNOWN") SetStatus("REGISTRADO", Theme.Success);
-                else if (result == "UNKNOWN") SetStatus("DESCONHECIDO\nREGISTRADO", Theme.Unknown);
+                else if (result == "KNOWN")
+                    SetStatus(answer != null && answer.CurrentStock >= 0 ? "COLETADO\nESTOQUE: " + answer.CurrentStock : "COLETADO",
+                              Theme.Success);
+                else if (result == "UNKNOWN") SetStatus("NÃO\nENCONTRADO", Theme.Unknown);
                 else if (result == "DUPLICATE") SetStatus("DUPLICADO\nIGNORADO", Theme.Duplicate);
+                string code = answer != null && answer.ProductCode != null ? answer.ProductCode : ProductCode.Normalize(record.Barcode);
+                if (code != null) _lblBarcode.Text = result == "UNKNOWN" ? "Código: " + code : code;
                 _lblItem.Text = record.ItemName ?? "";
             }
             RefreshInfo();
