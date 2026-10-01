@@ -10,6 +10,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { BrandMark, BrandName } from "@/components/brand";
 import { useConfirm } from "@/components/dialog";
+import { pendingLogoutMessage } from "@/collector/logout";
 import { openScanQueue } from "@/collector/store";
 import { getToken, getUser, setToken, type SessionUser } from "@/lib/api";
 
@@ -131,10 +132,11 @@ function useLogout() {
     } catch {
       /* no queue on this browser */
     }
-    if (pending > 0) {
+    const warning = pendingLogoutMessage(pending);
+    if (warning) {
       const r = await confirm({
         title: "Leituras pendentes",
-        message: <>Existem <b>{pending}</b> leituras ainda não sincronizadas neste aparelho. Elas continuam salvas e serão enviadas no próximo login.</>,
+        message: `${warning} Elas continuam salvas neste aparelho e serão enviadas no próximo login.`,
         confirmLabel: "Sair mesmo assim",
         tone: "danger",
       });

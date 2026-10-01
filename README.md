@@ -34,6 +34,12 @@ GIVOVA Coleta Web (/coleta, installable PWA)       Admin panel (Next.js + TypeSc
 - **Identity:** each browser gets a generated `WEB-<uuid>` collector id (no fingerprinting) and a friendly name.
   Sessions are optional, because stock is updated with or without a session.
 
+Unit tests for the collector logic (no extra test framework, uses Node's built-in runner):
+
+```bash
+cd admin-web && npm test
+```
+
 ## Core rule: no scan is ever lost
 
 ```

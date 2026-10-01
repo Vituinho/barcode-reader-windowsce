@@ -15,6 +15,7 @@ import { createDuplicateGuard, scannerKeyAction } from "@/collector/barcode";
 import { feedback, primeAudio, setSoundEnabled, soundEnabled } from "@/collector/feedback";
 import { getDeviceIdentity, setDeviceName, type DeviceIdentity } from "@/collector/identity";
 import { submitReading } from "@/collector/pipeline";
+import { pendingLogoutMessage } from "@/collector/logout";
 import { openScanQueue } from "@/collector/store";
 import type { QueuedScan, ScanQueue } from "@/collector/queue";
 import { createSyncEngine, type Connection, type EngineState } from "@/collector/sync";
@@ -294,10 +295,11 @@ export default function ColetaPage() {
 
   async function logout() {
     const pending = queueRef.current ? await queueRef.current.pendingCount() : 0;
-    if (pending > 0) {
+    const warning = pendingLogoutMessage(pending);
+    if (warning) {
       const r = await confirm({
         title: "Leituras pendentes",
-        message: <>Existem <b>{pending}</b> leituras ainda não sincronizadas. Elas continuam salvas neste aparelho e serão enviadas no próximo login.</>,
+        message: `${warning} Elas continuam salvas neste aparelho e serão enviadas no próximo login.`,
         confirmLabel: "Sair mesmo assim",
         tone: "danger",
       });

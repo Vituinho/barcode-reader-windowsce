@@ -2,6 +2,7 @@
 
 import { Camera, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createCameraDebounce } from "@/collector/cameraDebounce";
 
 /** Optional camera reading. Results go to the SAME pipeline as the physical scanner (onDetected). */
 
@@ -23,17 +24,6 @@ export function cameraSupported(): boolean {
   return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && window.isSecureContext;
 }
 
-/** Same physical label in front of the lens is reported once per 2.5 s (the scan pipeline also guards). */
-export function createCameraDebounce(windowMs = 2500) {
-  let last = "";
-  let at = 0;
-  return (raw: string, now: number) => {
-    if (raw === last && now - at < windowMs) return false;
-    last = raw;
-    at = now;
-    return true;
-  };
-}
 
 export function CameraScanner({
   onDetected,
