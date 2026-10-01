@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  AlertTriangle, Check, CircleSlash, CloudOff, Copy, Download, Keyboard, LayoutDashboard, Loader2, LogOut, Menu, ScanLine,
+  AlertTriangle, Camera, Check, CircleSlash, CloudOff, Copy, Download, Keyboard, LayoutDashboard, Loader2, LogOut, Menu, ScanLine,
   ShieldAlert, Volume2, VolumeX, WifiOff, X, XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand";
+import { CameraScanner, cameraSupported } from "@/components/camera";
 import { useConfirm } from "@/components/dialog";
 import { useInstallPrompt } from "@/components/pwa";
 import { createDuplicateGuard, scannerKeyAction } from "@/collector/barcode";
@@ -84,6 +85,8 @@ export default function ColetaPage() {
   const [sessions, setSessions] = useState<SessionChoice[]>([]);
   const [session, setSession] = useState<SessionChoice | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [hasCamera, setHasCamera] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const queueRef = useRef<ScanQueue | null>(null);
@@ -101,10 +104,10 @@ export default function ColetaPage() {
   }, []);
 
   const focusScanner = useCallback(() => {
-    if (menuOpen) return;
+    if (menuOpen || cameraOpen) return;
     const el = inputRef.current;
     if (el && document.activeElement !== el && !isTypingTarget(document.activeElement)) el.focus({ preventScroll: true });
-  }, [menuOpen]);
+  }, [menuOpen, cameraOpen]);
 
   // ---- bootstrap -------------------------------------------------------------------------------
   useEffect(() => {
@@ -119,6 +122,7 @@ export default function ColetaPage() {
     setDevice(d);
     deviceRef.current = d;
     setSound(soundEnabled());
+    setHasCamera(cameraSupported());
     try {
       setTabCompletes(localStorage.getItem(TAB_KEY) !== "off");
       const s = localStorage.getItem(SESSION_KEY);
@@ -207,8 +211,8 @@ export default function ColetaPage() {
   }, [focusScanner]);
 
   useEffect(() => {
-    if (!menuOpen) focusScanner();
-  }, [menuOpen, focusScanner]);
+    if (!menuOpen && !cameraOpen) focusScanner();
+  }, [menuOpen, cameraOpen, focusScanner]);
 
   // ---- scanning --------------------------------------------------------------------------------
   const handleReading = useCallback(async (raw: string, source: QueuedScan["source"]) => {
@@ -240,6 +244,13 @@ export default function ColetaPage() {
       void refreshRecent();
     }
   }, [refreshRecent]);
+
+  const closeCamera = useCallback(() => setCameraOpen(false), []);
+  // Camera readings use exactly the same pipeline as the physical scanner.
+  const onCameraDetected = useCallback((raw: string) => {
+    primeAudio();
+    void handleReading(raw, "CAMERA");
+  }, [handleReading]);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     primeAudio();
@@ -413,6 +424,18 @@ export default function ColetaPage() {
             >
               <Keyboard className="size-4" aria-hidden /> DIGITAR CÓDIGO
             </button>
+            {hasCamera && (
+              <button
+                type="button"
+                onClick={() => {
+                  primeAudio();
+                  setCameraOpen(true);
+                }}
+                className="inline-flex h-12 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Camera className="size-4" aria-hidden /> LER COM CÂMERA
+              </button>
+            )}
             {install && (
               <button
                 type="button"
@@ -548,9 +571,31 @@ export default function ColetaPage() {
           </div>
         </div>
       )}
+      {cameraOpen && <CameraScanner onDetected={onCameraDetected} onClose={closeCamera} status={cameraStatus(display)} />}
       {dialog}
     </div>
   );
+}
+
+function cameraStatus(d: Display): { label: string; tone: "ok" | "warn" | "bad" | "info" } | null {
+  switch (d.kind) {
+    case "collected":
+      return { label: `COLETADO · ${d.code}${d.stock !== null ? ` · ESTOQUE ${d.stock}` : ""}`, tone: "ok" };
+    case "unknown":
+      return { label: `NÃO ENCONTRADO · ${d.code}`, tone: "warn" };
+    case "duplicate":
+      return { label: "LEITURA DUPLICADA IGNORADA", tone: "info" };
+    case "invalid":
+      return { label: "CÓDIGO INVÁLIDO", tone: "bad" };
+    case "offline":
+      return { label: `SALVO OFFLINE · ${d.code}`, tone: "info" };
+    case "sending":
+      return { label: `SALVO · ENVIANDO ${d.code}`, tone: "info" };
+    case "idle":
+      return null;
+    default:
+      return { label: "ERRO", tone: "bad" };
+  }
 }
 
 function ToggleRow({ label, on, onChange, icon: Icon }: { label: string; on: boolean; onChange: (on: boolean) => void; icon: typeof Check }) {
