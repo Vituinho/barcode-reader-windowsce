@@ -1,4 +1,6 @@
 """Thin data-access helpers. Business rules live in app.services."""
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timedelta
 
