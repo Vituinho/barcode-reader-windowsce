@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using GivovaCollector.Core;
+using GivovaCollector.Platform;
 
 namespace GivovaCollector.Net
 {
@@ -17,6 +18,12 @@ namespace GivovaCollector.Net
         private readonly string _baseUrl;
         private readonly int _timeoutMs;
         private readonly string _userAgent;
+
+        static ApiClient()
+        {
+            // Must run before the first HTTPS request. No-op on Windows CE.
+            DeviceServices.EnsureModernTls();
+        }
 
         public ApiClient(string baseUrl, int timeoutSeconds, string userAgent)
         {
@@ -193,7 +200,12 @@ namespace GivovaCollector.Net
             {
                 resp = ex.Response as HttpWebResponse;
                 if (resp == null)
+                {
+                    // Keep WebExceptionStatus (e.g. SecureChannelFailure, TrustFailure, NameResolutionFailure) for diagnosis.
+                    Logger.Warn("http " + method + " " + path + " failed: status=" + ex.Status + " msg=" + ex.Message
+                                + (ex.InnerException != null ? " inner=" + ex.InnerException.Message : ""));
                     throw new ApiException(ApiErrorKind.Network, 0, ex.Status.ToString(), "rede: " + ex.Status);
+                }
             }
             catch (IOException ex)
             {

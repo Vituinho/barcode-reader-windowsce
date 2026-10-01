@@ -57,6 +57,32 @@ namespace GivovaCollector.Platform
             else DesktopFlushFileBuffers(handle);
         }
 
+        // ---- TLS ----------------------------------------------------------------------------
+
+        /// <summary>
+        /// Desktop simulator only: the exe targets .NET 4.0, whose default protocols are SSL3/TLS 1.0, which modern
+        /// HTTPS hosts (e.g. Railway) refuse. Enables TLS 1.2 (numeric 3072: the enum member does not exist in the
+        /// 4.0 reference assemblies) and drops SSL3. Certificate validation is untouched.
+        /// On Windows CE / .NET CF this compiles to nothing: TLS support comes from the device OS (Schannel).
+        /// </summary>
+        public static void EnsureModernTls()
+        {
+#if DESKTOP
+            try
+            {
+                const int Ssl3 = 48;
+                const int Tls12 = 3072;
+                int current = (int)System.Net.ServicePointManager.SecurityProtocol;
+                if (current != 0) // 0 = SystemDefault (newer runtimes): the OS already negotiates TLS 1.2+
+                    System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)((current & ~Ssl3) | Tls12);
+            }
+            catch (NotSupportedException)
+            {
+                // Runtime without TLS 1.2 (.NET 4.0 without 4.5+ installed): requests will report SecureChannelFailure.
+            }
+#endif
+        }
+
         // ---- sound --------------------------------------------------------------------------
 
         private const int MB_OK = 0x00000000;

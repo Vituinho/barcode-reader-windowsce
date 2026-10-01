@@ -147,7 +147,10 @@ namespace GivovaCollector.UI
             if (api == null) return "ERRO: " + error.Message;
             switch (api.Kind)
             {
-                case ApiErrorKind.Network: return "SEM CONEXÃO COM O SERVIDOR";
+                case ApiErrorKind.Network:
+                    if (api.ErrorCode == "SecureChannelFailure" || api.ErrorCode == "TrustFailure")
+                        return "FALHA HTTPS/TLS: " + api.ErrorCode;
+                    return "SEM CONEXÃO COM O SERVIDOR";
                 case ApiErrorKind.Unauthorized: return "USUÁRIO OU SENHA INVÁLIDOS";
                 case ApiErrorKind.Forbidden:
                     if (api.ErrorCode == "DEVICE_DISABLED") return "COLETOR DESATIVADO";
