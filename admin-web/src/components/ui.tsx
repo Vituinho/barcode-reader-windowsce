@@ -14,6 +14,8 @@ const NAV = [
   ["/barcodes/unknown", "Desconhecidos"],
   ["/devices", "Coletores"],
   ["/users", "Usuários"],
+  ["/downloads", "Downloads"],
+  ["/settings/releases", "Versões"],
 ] as const;
 
 export function Shell({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
@@ -147,5 +149,25 @@ export function Card({ label, value, tone }: { label: string; value: ReactNode; 
       <div className="text-xs uppercase text-slate-500">{label}</div>
       <div className={`mt-1 text-2xl font-semibold ${toneCls}`}>{value}</div>
     </div>
+  );
+}
+
+export function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Btn
+      variant="secondary"
+      onClick={() => {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => setCopied(false));
+      }}
+    >
+      {copied ? "Copiado" : label}
+    </Btn>
   );
 }

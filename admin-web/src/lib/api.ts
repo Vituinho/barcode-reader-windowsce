@@ -87,3 +87,21 @@ export function fmtAge(seconds: number | null | undefined): string {
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+export function fmtBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Only absolute https URLs are rendered as download links (defense in depth; the API validates too). */
+export function safeDownloadUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && !u.username && !u.password ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}

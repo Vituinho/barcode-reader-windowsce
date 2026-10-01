@@ -9,6 +9,8 @@ namespace GivovaCollector
 {
     public static class AppInfo
     {
+        /// <summary>Semantic version (MAJOR.MINOR.PATCH). Change only here: assembly version, About screen,
+        /// heartbeat and build-release-desktop.ps1 all read it.</summary>
         public const string Version = "1.0.0";
         public const string Name = "GIVOVA - COLETA";
     }

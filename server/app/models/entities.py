@@ -6,7 +6,8 @@ database enum migrations. Allowed values are listed as constants on each class.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func
+from sqlalchemy import (JSON, BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid,
+                        func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin, new_uuid
@@ -148,3 +149,34 @@ class AuditLog(Base):
     entity_type: Mapped[str | None] = mapped_column(String(40))
     entity_id: Mapped[str | None] = mapped_column(String(100))
     details: Mapped[dict | None] = mapped_column(JSON)
+
+
+class SoftwareRelease(Base):
+    """Release manifest for downloadable collector software. Binaries are hosted externally (downloadUrl)."""
+
+    __tablename__ = "software_releases"
+    PLATFORM_WINDOWS_CE = "WINDOWS_CE"
+    PLATFORM_WINDOWS_DESKTOP = "WINDOWS_DESKTOP"
+    PLATFORMS = (PLATFORM_WINDOWS_CE, PLATFORM_WINDOWS_DESKTOP)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    platform: Mapped[str] = mapped_column(String(30), nullable=False)
+    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    download_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    file_size: Mapped[int | None] = mapped_column(BigInteger)
+    release_notes: Mapped[str | None] = mapped_column(Text)
+    released_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    active: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("platform", "version", name="uq_software_releases_platform_version"),
+        # At most one current (active) release per platform.
+        Index("uq_software_releases_active_platform", "platform", unique=True,
+              postgresql_where=text("active")),
+    )

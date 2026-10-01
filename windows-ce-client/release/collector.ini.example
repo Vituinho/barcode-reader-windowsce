@@ -1,0 +1,18 @@
+# Givova Coleta - configuracao do coletor
+# 1) Renomeie este arquivo para collector.ini (mesma pasta do GivovaCollector.exe).
+# 2) Defina um DeviceId UNICO para este equipamento (ex.: GVT-SIM-001). Nao repita IDs.
+# 3) Nunca coloque senhas ou tokens neste arquivo. O login e feito na tela do aplicativo.
+DeviceId=
+DeviceName=
+ApiBaseUrl=https://api-production-d42d6.up.railway.app
+SyncIntervalSeconds=5
+RequestTimeoutSeconds=15
+DuplicateWindowSeconds=2
+HeartbeatIntervalSeconds=60
+TabCompletesScan=true
+SoundEnabled=true
+ScannerMode=WEDGE
+# Vazio = pasta "data" ao lado do GivovaCollector.exe
+DataDirectory=
+# Vazio = PIN padrao 1234 (o aplicativo pede para trocar na tela CONFIG)
+AdminPinHash=

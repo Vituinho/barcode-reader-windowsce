@@ -219,6 +219,22 @@ Compact Framework. The code deliberately avoids async/await, LINQ, `TryParse`, `
 - Wi-Fi/TLS capabilities if HTTPS is required. Also whether the battery API (`GetSystemPowerStatusEx`) is present;
   battery reporting is optional.
 
+## Downloads and releases
+
+- `/downloads` in the admin panel lists the current release per platform (`WINDOWS_CE`, `WINDOWS_DESKTOP`). It
+  shows version, size and SHA-256, the API address with a copy button, and installation steps.
+- **Releases are metadata only.** Binaries are hosted outside the repo and the database (e.g. GitHub Releases). An
+  admin registers version, file name, https URL, SHA-256 and size in `/settings/releases`. Activating a release
+  deactivates the previous one for that platform.
+- **API:** `GET /api/releases`, `GET /api/releases/latest/{platform}?currentVersion=x.y.z` (returns
+  `updateAvailable`, for a future collector update check) and `/api/admin/releases*` (ADMIN only).
+- **Version:** the single source is `AppInfo.Version` in `windows-ce-client/src/GivovaCollector/CollectorApp.cs`
+  (semantic `MAJOR.MINOR.PATCH`). The assembly version and the package script read it from there.
+- **Simulator package:** `powershell -ExecutionPolicy Bypass -File windows-ce-client/build-release-desktop.ps1`
+  builds, runs the tests and writes `build/release/GivovaCollector-Simulator-v<version>.zip` plus its `.sha256`.
+  The ZIP holds only the exe, `collector.ini.example` and `README-INSTALL.txt`.
+- **Windows CE installer:** none yet. It needs the VS2008 build and hardware homologation, and the page says so.
+
 ## Known limitations
 
 - **Offline login** is not available. A login needs the server. After an app restart the saved token (not the

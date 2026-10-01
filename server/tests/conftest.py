@@ -42,7 +42,7 @@ def schema():
 @pytest.fixture(autouse=True)
 def clean_db(schema):
     with get_engine().begin() as conn:
-        conn.execute(text("TRUNCATE scans, barcodes, items, audit_logs, collection_sessions, devices, users CASCADE"))
+        conn.execute(text("TRUNCATE scans, barcodes, items, audit_logs, collection_sessions, devices, users, software_releases CASCADE"))
     yield
 
 

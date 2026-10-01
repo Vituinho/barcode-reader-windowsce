@@ -86,3 +86,20 @@ export interface Dashboard {
   devicesDisabled: number;
   serverTime: string;
 }
+
+export type Platform = "WINDOWS_CE" | "WINDOWS_DESKTOP";
+
+export interface SoftwareRelease {
+  id: string;
+  platform: Platform;
+  version: string;
+  fileName: string;
+  downloadUrl: string;
+  sha256: string | null;
+  fileSize: number | null;
+  releaseNotes: string | null;
+  releasedAt: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
