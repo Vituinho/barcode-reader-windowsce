@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertTriangle, Check, CircleSlash, CloudOff, Copy, Keyboard, LayoutDashboard, Loader2, LogOut, Menu, ScanLine,
+  AlertTriangle, Check, CircleSlash, CloudOff, Copy, Download, Keyboard, LayoutDashboard, Loader2, LogOut, Menu, ScanLine,
   ShieldAlert, Volume2, VolumeX, WifiOff, X, XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand";
 import { useConfirm } from "@/components/dialog";
+import { useInstallPrompt } from "@/components/pwa";
 import { createDuplicateGuard, scannerKeyAction } from "@/collector/barcode";
 import { feedback, primeAudio, setSoundEnabled, soundEnabled } from "@/collector/feedback";
 import { getDeviceIdentity, setDeviceName, type DeviceIdentity } from "@/collector/identity";
@@ -69,6 +70,7 @@ const isTypingTarget = (el: Element | null) =>
 export default function ColetaPage() {
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
+  const { install } = useInstallPrompt();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [device, setDevice] = useState<DeviceIdentity | null>(null);
   const [engineState, setEngineState] = useState<EngineState>({ connection: "UNKNOWN", pending: 0, lastError: null });
@@ -411,6 +413,15 @@ export default function ColetaPage() {
             >
               <Keyboard className="size-4" aria-hidden /> DIGITAR CÓDIGO
             </button>
+            {install && (
+              <button
+                type="button"
+                onClick={() => void install()}
+                className="inline-flex h-12 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Download className="size-4" aria-hidden /> INSTALAR APLICATIVO
+              </button>
+            )}
             {pending > 0 && (
               <button
                 type="button"
