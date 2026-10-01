@@ -69,8 +69,12 @@ export default function MaintenancePage() {
         </p>
         <p className="mt-2 text-xs text-slate-600">
           Também remove produtos criados pela importação de XML. Mantidos: usuários, coletores, sessões, versões/downloads,
-          produtos cadastrados manualmente e o registro de auditoria. Leituras ainda pendentes nos coletores (offline)
-          serão enviadas depois do reset; sincronize os coletores antes.
+          produtos cadastrados manualmente e o registro de auditoria.
+        </p>
+        <p role="note" className="mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          Antes de resetar, sincronize ou limpe conscientemente as filas offline dos dispositivos de coleta. Leituras que
+          ainda estão salvas em celulares, tablets ou coletores serão enviadas depois do reset e voltarão a gerar estoque.
+          O servidor não consegue apagar a fila local de outro aparelho.
         </p>
 
         {enabled === false ? (

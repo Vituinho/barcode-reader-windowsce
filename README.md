@@ -1,21 +1,38 @@
-# Givova Coleta — barcode collection for Windows CE handhelds
+# Givova Coleta — web barcode collection, stock and load dispatch
 
-Offline-first barcode collection for industrial Windows CE / Windows Embedded Compact handhelds.
+Offline-first barcode collection that runs in the browser: Android collectors and phones, tablets and desktops.
+NF-e XML files define the loads, scans build the stock, and admins dispatch loads.
 
 ```
-Windows CE handheld (C# WinForms, .NET Compact Framework 3.5)
-        │  Wi-Fi / LAN, HTTP + JSON (HttpWebRequest)
-        ▼
-Backend API (Python FastAPI, SQLAlchemy 2, Alembic)  ──►  PostgreSQL
-        ▲
-Admin web panel (Next.js + TypeScript + Tailwind)
+GIVOVA Coleta Web (/coleta, installable PWA)       Admin panel (Next.js + TypeScript + Tailwind)
+  scanner (keyboard wedge) / camera / typing                    │
+  IndexedDB offline queue ──── HTTPS + JSON ──►  Backend API (FastAPI, SQLAlchemy 2, Alembic) ──► PostgreSQL
 ```
 
 | Folder | Content |
 |---|---|
-| `windows-ce-client/` | Collector app (`src/GivovaCollector`), core tests, end-to-end scenario runner, desktop build script |
+| `admin-web/` | Web collector `/coleta` (PWA) and admin panel, deployed together |
 | `server/` | API, models, Alembic migrations, seed, pytest suite |
-| `admin-web/` | Admin panel (sessions, scans, unknown barcodes, items, collectors, users, CSV export) |
+| `windows-ce-client/` | **Legacy / reference only.** The native Windows CE collector; it is not deployed and gets no new features. |
+
+## Web collector (`/coleta`)
+
+- **Users:** ADMIN and OPERATOR. Operators land on `/coleta` after login; admins can reach it from **COLETAR** in
+  the sidebar.
+- **Physical scanner:** configure it as a keyboard wedge with an ENTER suffix (TAB also works). The scanner field
+  keeps focus. Product code = **first 10 characters** of the trimmed reading, and the full reading is kept.
+  Readings under 10 characters show CÓDIGO INVÁLIDO. The same raw reading within 2 s is ignored as a double
+  trigger.
+- **Offline:** every reading is saved to IndexedDB with its `clientScanId` before any request, then sent in order
+  to `POST /api/scans`. Retries reuse the same id, so stock never counts a scan twice.
+  - If the token expires, the queue is kept and a new login resumes syncing.
+  - Logout warns while scans are still pending.
+- **PWA:** the manifest and service worker (`admin-web/public/sw.js`) cache only build assets and the `/coleta`
+  shell. API responses, logins and other mutations are never cached.
+- **Camera:** LER COM CÂMERA uses the native `BarcodeDetector` when available. Otherwise it loads ZXing on
+  demand.
+- **Identity:** each browser gets a generated `WEB-<uuid>` collector id (no fingerprinting) and a friendly name.
+  Sessions are optional, because stock is updated with or without a session.
 
 ## Core rule: no scan is ever lost
 
@@ -118,10 +135,13 @@ One Railway project with three services from this repo:
   and the health check is `/api/health`.
 - **Admin service:** builds `output: "standalone"` and starts with `npm run start` (binds `0.0.0.0:$PORT`).
 - **Seed:** a manual step, `python -m app.seed`, run on the API service.
-- **Collectors:** set `ApiBaseUrl` to the API's public `https://…up.railway.app` URL. Railway serves HTTPS with
-  modern TLS only, so check each device with TESTAR CONEXÃO (see TLS note below).
+- **Collectors:** open `https://<admin domain>/coleta` on each device (see Instalação in the panel to add it to
+  the home screen). No per-device configuration is needed.
 
-## Windows CE collector
+## Windows CE collector (legacy, not used in operation)
+
+> Kept as reference only. The supported collector is the web collector above. Nothing below is needed to
+> deploy or run the system.
 
 ### Required toolchain (for the real device build)
 
