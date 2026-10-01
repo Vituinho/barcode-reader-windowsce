@@ -8,8 +8,9 @@ from app.core.database import get_db
 from app.core.errors import DomainError
 from app.models import CollectionSession
 from app.repositories.repos import SessionRepo
-from app.schemas.collector import (DeviceConfigOut, HeartbeatIn, HeartbeatOut, ItemLookupOut, LoginRequest,
-                                   LoginResponse, ScanBatchIn, ScanBatchOut, ScanIn, ScanResult, SessionOut)
+from app.schemas.collector import (DeviceConfigOut, DeviceProfileIn, DeviceProfileOut, HeartbeatIn, HeartbeatOut,
+                                   ItemLookupOut, LoginRequest, LoginResponse, ScanBatchIn, ScanBatchOut, ScanIn,
+                                   ScanResult, SessionOut)
 from app.services import auth_service, catalog_service, device_service, scan_service
 from app.services.auth_service import AuthContext
 
@@ -55,3 +56,8 @@ def device_config(device_id: str = Query(alias="deviceId"), db: Session = Depend
 def device_heartbeat(hb: HeartbeatIn, db: Session = Depends(get_db), auth: AuthContext = Depends(current_auth),
                      ip: str | None = Depends(client_ip)):
     return device_service.heartbeat(db, hb, auth, ip)
+
+
+@router.post("/device/profile", response_model=DeviceProfileOut)
+def device_profile(data: DeviceProfileIn, db: Session = Depends(get_db), auth: AuthContext = Depends(current_auth)):
+    return device_service.update_profile(db, data.device_id, data.name, auth)

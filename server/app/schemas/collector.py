@@ -113,3 +113,24 @@ class HeartbeatOut(ApiModel):
     ok: bool
     server_time: datetime
     device_status: str
+
+
+class DeviceProfileIn(ApiModel):
+    """Friendly name chosen on the collector (e.g. "Coletor Expedição 01"). Web collectors use WEB-<uuid> ids."""
+
+    device_id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+
+class DeviceProfileOut(ApiModel):
+    device_id: str
+    name: str
+    status: str

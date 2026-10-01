@@ -101,3 +101,16 @@ def update_device(db: Session, device_id: str, data: DeviceUpdate, auth: AuthCon
     db.commit()
     db.refresh(device)
     return to_out(device)
+
+
+def update_profile(db: Session, device_id: str, name: str, auth: AuthContext):
+    """The authenticated collector renames itself (no admin rights needed, only its own device)."""
+    from app.schemas.collector import DeviceProfileOut
+
+    device = _own_device(db, device_id, auth)
+    if device.name != name:
+        AuditRepo(db).add("DEVICE_RENAMED", actor_user_id=auth.user.id, device_id=device.id, entity_type="device",
+                          entity_id=device.id, details={"from": device.name, "to": name})
+        device.name = name
+        db.commit()
+    return DeviceProfileOut(device_id=device.id, name=device.name, status=device.status)

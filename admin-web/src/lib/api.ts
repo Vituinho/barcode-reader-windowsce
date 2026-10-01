@@ -13,12 +13,47 @@ export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string | null) {
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+const USER_KEY = "givova_admin_user";
+
+export interface SessionUser {
+  id: string;
+  fullName: string;
+  role: "ADMIN" | "OPERATOR";
+  /** Token bound to this browser's collector id (required to scan). */
+  deviceBound: boolean;
 }
 
-async function request(path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> {
+export function setToken(token: string | null) {
+  if (token) window.localStorage.setItem(TOKEN_KEY, token);
+  else {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
+  }
+}
+
+export function setAuth(token: string, user: SessionUser) {
+  window.localStorage.setItem(TOKEN_KEY, token);
+  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function getUser(): SessionUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as SessionUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where a user lands after login: operators go straight to the collector. */
+export function homeFor(user: SessionUser | null): string {
+  return user?.role === "ADMIN" ? "/dashboard" : "/coleta";
+}
+
+type RequestInitLite = { method?: string; body?: unknown; noRedirect?: boolean };
+
+async function request(path: string, init: RequestInitLite = {}): Promise<Response> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -28,9 +63,9 @@ async function request(path: string, init: { method?: string; body?: unknown } =
     headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
-  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/")) {
+  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/") && !init.noRedirect) {
     setToken(null);
-    window.location.href = "/login";
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
   }
   if (!res.ok) {
     let code: string | undefined;
@@ -47,7 +82,7 @@ async function request(path: string, init: { method?: string; body?: unknown } =
   return res;
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInitLite = {}): Promise<T> {
   const res = await request(path, init);
   return (await res.json()) as T;
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { getToken, setToken } from "@/lib/api";
+import { getToken, getUser, setToken } from "@/lib/api";
 
 const NAV = [
   ["/dashboard", "Painel"],
@@ -28,9 +28,13 @@ export function Shell({ title, children, actions }: { title: string; children: R
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) router.replace("/login");
+    const user = getUser();
+    if (!getToken() || !user) {
+      setToken(null); // tokens from before user metadata existed: log in again
+      router.replace(`/login?next=${encodeURIComponent(path)}`);
+    } else if (user.role !== "ADMIN") router.replace("/coleta");
     else setReady(true);
-  }, [router]);
+  }, [router, path]);
 
   if (!ready) return null;
   return (
