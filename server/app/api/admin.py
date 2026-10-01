@@ -12,7 +12,9 @@ from app.repositories.repos import ScanFilter
 from app.schemas.admin import (BarcodeAssign, BarcodeOut, DashboardOut, DeviceCreate, DeviceOut, DeviceUpdate,
                                ItemCreate, ItemOut, ItemUpdate, ScanOut, ScanPage, ScanResolve, SessionAdminOut,
                                SessionCreate, UserCreate, UserOut, UserUpdate)
-from app.services import admin_service, catalog_service, device_service
+from app.core.config import get_settings
+from app.schemas.common import ApiModel
+from app.services import admin_service, catalog_service, device_service, maintenance_service
 from app.services.auth_service import AuthContext
 
 router = APIRouter(prefix="/api/admin")
@@ -147,3 +149,19 @@ def create_user(data: UserCreate, db: Session = Depends(get_db), auth: AuthConte
 def update_user(user_id: uuid.UUID, data: UserUpdate, db: Session = Depends(get_db),
                 auth: AuthContext = Depends(admin_auth)):
     return admin_service.update_user(db, user_id, data, auth)
+
+
+# ---- maintenance (homologation tool) ----
+class ResetIn(ApiModel):
+    confirmation: str
+
+
+@router.get("/maintenance")
+def maintenance_status(_: AuthContext = Depends(admin_auth)):
+    return {"operationalResetEnabled": get_settings().allow_operational_reset,
+            "confirmationText": maintenance_service.CONFIRMATION_TEXT}
+
+
+@router.post("/maintenance/reset-operational-data")
+def reset_operational_data(data: ResetIn, db: Session = Depends(get_db), auth: AuthContext = Depends(admin_auth)):
+    return {"deleted": maintenance_service.reset_operational_data(db, data.confirmation, auth)}

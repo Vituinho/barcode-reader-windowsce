@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     max_barcode_length: int = 512
     max_batch_size: int = 100
 
+    # Homologation tool: ADMIN can wipe operational data (loads, stock, scans). Set false in real production.
+    allow_operational_reset: bool = True
+
     seed_admin_password: str = ""
     seed_operator_password: str = ""
 

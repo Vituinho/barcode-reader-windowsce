@@ -19,6 +19,7 @@ const NAV = [
   ["/users", "Usuários"],
   ["/downloads", "Downloads"],
   ["/settings/releases", "Versões"],
+  ["/settings/maintenance", "Manutenção"],
 ] as const;
 
 export function Shell({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
