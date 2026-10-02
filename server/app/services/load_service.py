@@ -15,7 +15,7 @@ from app.core.errors import Conflict, DomainError, NotFound
 from app.core.timeutil import local_day_start_utc, utcnow
 from app.models import InventoryBalance, InventoryMovement, Invoice, InvoiceItem, Load, LoadItem, LoadProgramming
 from app.repositories.repos import AuditRepo
-from app.services import inventory_service
+from app.services import inventory_service, side_decoder
 from app.services.auth_service import AuthContext
 
 
@@ -29,12 +29,19 @@ class RequirementView:
         return self.item.required_quantity
 
     @property
+    def side_rule_pending(self) -> bool:
+        """Bifurcated base whose A/B rule is not confirmed: never counted as covered."""
+        return side_decoder.side_rule_pending(self.item.product)
+
+    @property
     def available(self) -> int:
-        return 0 if self.required is None else min(self.required, self.stock)
+        return 0 if self.required is None or self.side_rule_pending else min(self.required, self.stock)
 
     @property
     def missing(self) -> int:
-        return 0 if self.required is None else max(0, self.required - self.stock)
+        if self.required is None:
+            return 0
+        return self.required if self.side_rule_pending else max(0, self.required - self.stock)
 
 
 @dataclass
@@ -44,7 +51,7 @@ class LoadView:
 
     @property
     def needs_review(self) -> bool:
-        return any(r.item.required_quantity is None for r in self.requirements)
+        return any(r.item.required_quantity is None or r.side_rule_pending for r in self.requirements)
 
     @property
     def required_total(self) -> int:
@@ -204,7 +211,7 @@ def product_coverage(db: Session, programming_id: uuid.UUID) -> list[ProductCove
                 continue
             pc.open_loads += 1
             pc.required += r.required or 0
-            pc.needs_review = pc.needs_review or r.required is None
+            pc.needs_review = pc.needs_review or r.required is None or r.side_rule_pending
     return sorted(rows.values(), key=lambda p: (p.missing == 0, -p.missing, p.product_code or ""))
 
 
@@ -297,6 +304,8 @@ def dispatch(db: Session, load_id: uuid.UUID, auth: AuthContext) -> Load:
             raise Conflict("LOAD_EMPTY", "Carga sem produtos")
         if any(i.required_quantity is None for i in items):
             raise Conflict("LOAD_NEEDS_REVIEW", "Carga com quantidades a revisar (unidade não discreta)")
+        if any(side_decoder.side_rule_pending(i.product) for i in items):
+            raise Conflict("SIDE_RULE_PENDING", f"Carga com base bipartida: {side_decoder.SIDE_RULE_PENDING}")
 
         product_ids = sorted({i.product_id for i in items}, key=str)
         balances = {b.product_id: b for b in db.scalars(

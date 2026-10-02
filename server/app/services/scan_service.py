@@ -23,7 +23,7 @@ from app.core.timeutil import device_time_to_utc, utcnow
 from app.models import Barcode, CollectionSession, Device, InventoryMovement, LoadProgramming, Scan
 from app.repositories.repos import BarcodeRepo, DeviceRepo, ScanRepo, SessionRepo, UserRepo
 from app.schemas.collector import ScanIn, ScanResult
-from app.services import barcode_rules, blocklist_service, inventory_service, load_service
+from app.services import barcode_rules, blocklist_service, inventory_service, load_service, side_decoder
 from app.services.auth_service import AuthContext
 
 
@@ -165,6 +165,7 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
             product_code=product_code,
             product_id=product.id if product else None,
             programming_id=programming_id,
+            side=side_decoder.decode_side(product, payload.barcode),
             result=Scan.RESULT_KNOWN if product else Scan.RESULT_UNKNOWN,
             sync_state=state,
         )
@@ -177,7 +178,8 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
                 # Production stock of the selected programming; any compatible load of that programming
                 # may use it. A load number embedded in the label is deliberately ignored.
                 current_stock = inventory_service.apply_movement(
-                    db, product.id, InventoryMovement.SCAN_IN, 1, programming_id=programming_id, scan_id=scan.id,
+                    db, product.id, InventoryMovement.SCAN_IN, 1, programming_id=programming_id, side=scan.side,
+                    scan_id=scan.id,
                     device_id=device.id, user_id=operator_id, now=now)
                 ready_codes = load_service.newly_ready_loads(db, product.id, current_stock, programming_id)
                 newly_ready = len(ready_codes)

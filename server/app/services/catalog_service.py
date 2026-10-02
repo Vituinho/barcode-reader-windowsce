@@ -10,6 +10,7 @@ from app.repositories.repos import AuditRepo, BarcodeRepo, ItemRepo
 from app.schemas.admin import BarcodeOut, ItemCreate, ItemOut, ItemUpdate
 from app.schemas.collector import ItemLookupOut
 from app.services.auth_service import AuthContext
+from app.services import side_decoder
 
 
 def lookup(db: Session, code: str) -> ItemLookupOut:
@@ -29,7 +30,8 @@ def lookup(db: Session, code: str) -> ItemLookupOut:
 
 def _item_out(item: Item, codes: list[str]) -> ItemOut:
     return ItemOut(id=item.id, sku=item.sku, name=item.name, description=item.description,
-                   is_active=item.is_active, created_at=item.created_at, barcodes=codes)
+                   is_active=item.is_active, created_at=item.created_at, barcodes=codes,
+                   product_kind=item.product_kind, side_rule_pending=side_decoder.side_rule_pending(item))
 
 
 def list_items(db: Session, q: str | None) -> list[ItemOut]:

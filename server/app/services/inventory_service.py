@@ -48,7 +48,7 @@ def balance_of(db: Session, product_id: uuid.UUID, programming_id: uuid.UUID | N
 
 
 def apply_movement(db: Session, product_id: uuid.UUID, movement_type: str, quantity: int, *,
-                   programming_id: uuid.UUID | None = None,
+                   programming_id: uuid.UUID | None = None, side: str | None = None,
                    scan_id: uuid.UUID | None = None, load_id: uuid.UUID | None = None, reason: str | None = None,
                    device_id: str | None = None, user_id: uuid.UUID | None = None,
                    now: datetime | None = None) -> int:
@@ -56,7 +56,7 @@ def apply_movement(db: Session, product_id: uuid.UUID, movement_type: str, quant
     if quantity == 0:
         raise ValueError("movement quantity must not be zero")
     now = now or utcnow()
-    db.add(InventoryMovement(product_id=product_id, programming_id=programming_id, type=movement_type,
+    db.add(InventoryMovement(product_id=product_id, programming_id=programming_id, side=side, type=movement_type,
                              quantity=quantity, scan_id=scan_id, load_id=load_id, reason=reason, device_id=device_id,
                              created_by_id=user_id, created_at=now))
     db.flush()

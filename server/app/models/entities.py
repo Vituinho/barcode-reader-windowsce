@@ -73,6 +73,8 @@ class Item(CreatedAtMixin, Base):
     EAN is optional metadata only and never used for identification."""
 
     __tablename__ = "items"
+    KIND_NORMAL = "NORMAL"
+    KIND_BIFURCATED_BASE = "BIFURCATED_BASE"  # two volumes (side A + side B), see services/side_decoder.py
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     sku: Mapped[str | None] = mapped_column(String(80), unique=True)
@@ -81,6 +83,10 @@ class Item(CreatedAtMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     unit: Mapped[str | None] = mapped_column(String(10))
     ean: Mapped[str | None] = mapped_column(String(14))
+    product_kind: Mapped[str] = mapped_column(String(30), nullable=False, default=KIND_NORMAL,
+                                              server_default=KIND_NORMAL)
+    # Name of a confirmed side decoder (side_decoder.RULES); NULL = side rule pending
+    side_rule: Mapped[str | None] = mapped_column(String(80))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
@@ -149,6 +155,8 @@ class Scan(Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id"))
     # Programming selected on the collector when the label was read (kept even for rejected readings)
     programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"), index=True)
+    # SIDE_A / SIDE_B decoded from the label (bifurcated bases with a confirmed rule only); NULL = n/a or unknown
+    side: Mapped[str | None] = mapped_column(String(10))
 
     barcode: Mapped[Barcode] = relationship(lazy="joined")
     operator: Mapped[User | None] = relationship(foreign_keys=[operator_id], lazy="joined")
@@ -356,6 +364,8 @@ class InventoryMovement(Base):
     scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scans.id"), unique=True)
     # Production stock bucket (NULL = legacy global stock)
     programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"), index=True)
+    # SIDE_A / SIDE_B for bifurcated bases with a confirmed side rule; NULL otherwise
+    side: Mapped[str | None] = mapped_column(String(10))
     load_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("loads.id"), index=True)
     reason: Mapped[str | None] = mapped_column(Text)
     device_id: Mapped[str | None] = mapped_column(String(40))

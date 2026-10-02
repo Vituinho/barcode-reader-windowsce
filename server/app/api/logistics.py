@@ -11,7 +11,7 @@ from app.models import InventoryMovement
 from app.schemas.logistics import (AdjustmentIn, AdjustmentOut, DispatchOut, ImportReportOut, InventoryMovementsOut,
                                    InventoryRowOut, InvoiceLineOut, InvoiceOut, LoadDetailOut, LoadRequirementOut,
                                    LoadSummaryOut, MovementOut, ResolveItemIn, UnknownCodeOut)
-from app.services import admin_service, import_service, inventory_service, load_service
+from app.services import admin_service, import_service, inventory_service, load_service, side_decoder
 from app.services.auth_service import AuthContext
 from app.services.load_service import LoadView
 
@@ -50,8 +50,10 @@ def _detail(db: Session, view: LoadView) -> LoadDetailOut:
         requirements=[LoadRequirementOut(
             id=r.item.id, product_code=r.item.product.sku, description=r.item.product.name, unit=r.item.unit,
             required_quantity=r.required, commercial_quantity=float(r.item.commercial_quantity), stock=r.stock,
-            available=r.available, missing=r.missing, needs_review=r.item.required_quantity is None,
-            review_reason=r.item.review_reason, resolution_note=r.item.resolution_note,
+            available=r.available, missing=r.missing,
+            needs_review=r.item.required_quantity is None or r.side_rule_pending,
+            review_reason=side_decoder.SIDE_RULE_PENDING if r.side_rule_pending else r.item.review_reason,
+            product_kind=r.item.product.product_kind, side_rule_pending=r.side_rule_pending, resolution_note=r.item.resolution_note,
             resolved_at=r.item.resolved_at) for r in view.requirements],
         invoices=[InvoiceOut(
             id=i.id, access_key=i.access_key, invoice_number=i.invoice_number, issued_at=i.issued_at,

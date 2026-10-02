@@ -196,3 +196,54 @@ def test_dispatch_consumes_programming_stock_and_recalculates(client, seed, op_h
     assert after["status"] == "PENDING" and after["missingVolumes"] == 2
     p = client.get(f"/api/programmings/{pid}/products", headers=op_headers).json()[0]
     assert (p["required"], p["dispatched"], p["stock"]) == (2, 2, 0)
+
+
+# ---- bifurcated bases / laminates ---------------------------------------------------------------------------
+
+def mark_bifurcated(client, admin_headers, db, code):
+    item_id = db.scalar(select(Item.id).where(Item.sku == code))
+    r = client.patch(f"/api/admin/items/{item_id}", json={"productKind": "BIFURCATED_BASE"}, headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["productKind"] == "BIFURCATED_BASE" and r.json()["sideRulePending"] is True
+
+
+def test_bifurcated_base_without_side_rule_stays_in_review(client, seed, op_headers, admin_headers, db):
+    pid = setup_programming(client, admin_headers, lines=(("6050647134", "BASE BIPARTIDA", "SEM GTIN", "UN", "1.0000"),))
+    mark_bifurcated(client, admin_headers, db, "6050647134")
+    body = pscan(client, seed, op_headers, pid, "60506471342313220001")
+    assert body["result"] == "KNOWN" and not body["readyLoadCodes"]
+    scan = db.scalar(select(Scan).where(Scan.client_scan_id == body["clientScanId"]))
+    assert scan.side is None  # never guessed
+    load = client.get(f"/api/loads?programmingId={pid}", headers=op_headers).json()[0]
+    assert load["status"] == "PENDING" and load["needsReview"] is True and load["coveredVolumes"] == 0
+    detail = client.get(f"/api/loads/{load['id']}", headers=op_headers).json()
+    req = detail["requirements"][0]
+    assert req["sideRulePending"] is True and req["reviewReason"] == "REGRA DE LADO PENDENTE"
+    r = client.post(f"/api/loads/{load['id']}/dispatch", headers=admin_headers)
+    assert r.status_code == 409 and r.json()["error"] == "SIDE_RULE_PENDING"
+
+
+def test_side_decoder_is_the_only_side_source(client, seed, op_headers, admin_headers, db, monkeypatch):
+    from app.services import side_decoder
+    monkeypatch.setitem(side_decoder.RULES, "TEST_LAST_CHAR", lambda raw: {"A": "SIDE_A", "B": "SIDE_B"}.get(raw[-1:]))
+    pid = setup_programming(client, admin_headers, lines=(("6050647134", "BASE BIPARTIDA", "SEM GTIN", "UN", "1.0000"),))
+    mark_bifurcated(client, admin_headers, db, "6050647134")
+    db.execute(Item.__table__.update().where(Item.sku == "6050647134").values(side_rule="TEST_LAST_CHAR"))
+    db.commit()
+    body = pscan(client, seed, op_headers, pid, "6050647134231322000A")
+    db.expire_all()
+    scan = db.scalar(select(Scan).where(Scan.client_scan_id == body["clientScanId"]))
+    move = db.scalar(select(InventoryMovement).where(InventoryMovement.scan_id == scan.id))
+    assert scan.side == move.side == "SIDE_A"
+    assert side_decoder.decode_side(scan.product, "6050647134231322000X") is None
+
+
+def test_laminate_meter_unit_stays_in_review(client, seed, op_headers, admin_headers, db):
+    pid = setup_programming(client, admin_headers,
+                            lines=(("7010001234", "LAMINADO", "SEM GTIN", "M", "12.5000"),))
+    body = pscan(client, seed, op_headers, pid, "70100012342313220001")
+    assert body["result"] == "KNOWN"
+    load = client.get(f"/api/loads?programmingId={pid}", headers=op_headers).json()[0]
+    assert load["status"] == "PENDING" and load["needsReview"] is True
+    req = client.get(f"/api/loads/{load['id']}", headers=op_headers).json()["requirements"][0]
+    assert req["requiredQuantity"] is None and req["commercialQuantity"] == 12.5  # never converted

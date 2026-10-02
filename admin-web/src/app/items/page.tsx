@@ -42,6 +42,15 @@ export default function ItemsPage() {
     }
   }
 
+  async function setKind(item: Item, productKind: Item["productKind"]) {
+    try {
+      await api(`/api/admin/items/${item.id}`, { method: "PATCH", body: { productKind } });
+      load(q);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
   async function toggle(item: Item) {
     try {
       await api(`/api/admin/items/${item.id}`, { method: "PATCH", body: { isActive: !item.isActive } });
@@ -64,12 +73,24 @@ export default function ItemsPage() {
         <input className={`${inputCls} w-72`} placeholder="Buscar por nome ou SKU" value={q} onChange={(e) => setQ(e.target.value)} />
         <Btn type="submit" variant="secondary">Buscar</Btn>
       </form>
-      <Table head={["Item", "SKU", "Códigos", "Status", ""]}>
+      <Table head={["Item", "SKU", "Códigos", "Tipo", "Status", ""]}>
         {items.map((i) => (
           <tr key={i.id}>
             <Td>{i.name}</Td>
             <Td mono>{i.sku ?? "—"}</Td>
             <Td mono>{i.barcodes.join(", ") || "—"}</Td>
+            <Td>
+              <select
+                className={`${inputCls} h-8 text-xs`}
+                value={i.productKind}
+                onChange={(e) => setKind(i, e.target.value as Item["productKind"])}
+                aria-label={`Tipo do produto ${i.sku ?? i.name}`}
+              >
+                <option value="NORMAL">Normal</option>
+                <option value="BIFURCATED_BASE">Base bipartida (A/B)</option>
+              </select>
+              {i.sideRulePending && <div className="mt-1"><Badge value="REVIEW" label="REGRA DE LADO PENDENTE" /></div>}
+            </Td>
             <Td><Badge value={i.isActive ? "ACTIVE" : "DISABLED"} /></Td>
             <Td><Btn variant="secondary" onClick={() => toggle(i)}>{i.isActive ? "Desativar" : "Ativar"}</Btn></Td>
           </tr>

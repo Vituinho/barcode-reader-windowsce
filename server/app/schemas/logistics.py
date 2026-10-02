@@ -67,6 +67,8 @@ class LoadRequirementOut(ApiModel):
     missing: int
     needs_review: bool
     review_reason: str | None = None
+    product_kind: str = "NORMAL"
+    side_rule_pending: bool = False
     resolution_note: str | None = None
     resolved_at: datetime | None = None
 

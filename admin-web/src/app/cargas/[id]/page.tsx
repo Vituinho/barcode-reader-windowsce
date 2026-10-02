@@ -158,7 +158,8 @@ export default function LoadDetailPage() {
               <li key={r.id} className={`px-4 py-3 ${r.needsReview ? "bg-purple-50/60" : short ? "bg-amber-50/70" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-mono text-sm font-semibold">{r.productCode}</span>
-                  {r.needsReview ? <Badge value="REVIEW" label="REVISAR" />
+                  {r.sideRulePending ? <Badge value="REVIEW" label="LADO PENDENTE" />
+                    : r.needsReview ? <Badge value="REVIEW" label="REVISAR" />
                     : state === "DISPATCHED" ? <Badge value="DISPATCHED" />
                     : short ? <Badge value="PENDING" label={`FALTA ${r.missing}`} /> : <Badge value="READY" label="OK" />}
                 </div>
@@ -170,8 +171,8 @@ export default function LoadDetailPage() {
                   {short && <span>Falta <b className="text-sm text-amber-800">{r.missing}</b></span>}
                 </div>
                 {r.reviewReason && <div className="mt-1 text-xs text-purple-800">{r.reviewReason} · NF-e: {r.commercialQuantity} {r.unit}</div>}
-                {admin && state !== "DISPATCHED" && (r.needsReview || r.resolvedAt) && (
-                  <div className="mt-2"><Btn variant="secondary" size="sm" onClick={() => void resolve(r)}>{r.needsReview ? "Definir volumes" : "Alterar"}</Btn></div>
+                {admin && state !== "DISPATCHED" && (r.requiredQuantity === null || r.resolvedAt) && (
+                  <div className="mt-2"><Btn variant="secondary" size="sm" onClick={() => void resolve(r)}>{r.requiredQuantity === null ? "Definir volumes" : "Alterar"}</Btn></div>
                 )}
               </li>
             );
@@ -198,14 +199,15 @@ export default function LoadDetailPage() {
                 <Td align="right">{r.stock}</Td>
                 <Td align="right">{r.needsReview || state === "DISPATCHED" ? "—" : short ? <b className="text-amber-800">{r.missing}</b> : 0}</Td>
                 <Td>
-                  {r.needsReview ? <Badge value="REVIEW" label="REVISAR" />
+                  {r.sideRulePending ? <Badge value="REVIEW" label="LADO PENDENTE" />
+                    : r.needsReview ? <Badge value="REVIEW" label="REVISAR" />
                     : state === "DISPATCHED" ? <Badge value="DISPATCHED" />
                     : short ? <Badge value="PENDING" label={`FALTA ${r.missing}`} />
                     : <Badge value="READY" label="OK" />}
                 </Td>
                 <Td>
-                  {admin && state !== "DISPATCHED" && (r.needsReview || r.resolvedAt) && (
-                    <Btn variant="secondary" size="sm" onClick={() => void resolve(r)}>{r.needsReview ? "Definir volumes" : "Alterar"}</Btn>
+                  {admin && state !== "DISPATCHED" && (r.requiredQuantity === null || r.resolvedAt) && (
+                    <Btn variant="secondary" size="sm" onClick={() => void resolve(r)}>{r.requiredQuantity === null ? "Definir volumes" : "Alterar"}</Btn>
                   )}
                 </Td>
               </tr>

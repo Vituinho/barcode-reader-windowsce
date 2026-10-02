@@ -43,6 +43,9 @@ export interface Item {
   description: string | null;
   isActive: boolean;
   barcodes: string[];
+  productKind: "NORMAL" | "BIFURCATED_BASE";
+  /** Bifurcated base whose A/B label rule is not confirmed yet. */
+  sideRulePending: boolean;
 }
 
 export interface Barcode {
@@ -163,6 +166,8 @@ export interface LoadRequirement {
   missing: number;
   needsReview: boolean;
   reviewReason: string | null;
+  productKind: "NORMAL" | "BIFURCATED_BASE";
+  sideRulePending: boolean;
   resolutionNote: string | null;
   resolvedAt: string | null;
 }

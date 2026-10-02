@@ -87,6 +87,8 @@ class ItemOut(ApiModel):
     is_active: bool
     created_at: datetime
     barcodes: list[str] = []
+    product_kind: str = "NORMAL"
+    side_rule_pending: bool = False
 
 
 class ItemCreate(ApiModel):
@@ -101,6 +103,8 @@ class ItemUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     is_active: bool | None = None
+    # NORMAL | BIFURCATED_BASE (the A/B side rule itself is only set in code once confirmed)
+    product_kind: str | None = Field(default=None, pattern="^(NORMAL|BIFURCATED_BASE)$")
 
 
 class BarcodeOut(ApiModel):
