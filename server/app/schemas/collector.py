@@ -42,6 +42,8 @@ class ScanIn(ApiModel):
     raw_barcode: str | None = None
     source: str = Field(default="WINDOWS_CE", max_length=30)
     scanned_at_device: datetime
+    # Load programming selected on the collector (web collector). Absent = legacy global stock.
+    programming_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("barcode")
     @classmethod
@@ -67,6 +69,8 @@ class ScanResult(ApiModel):
     current_stock: int | None = None
     # Loads that became READY because of this scan
     newly_ready_loads: int | None = None
+    ready_load_codes: list[str] | None = None
+    programming_id: uuid.UUID | None = None
     sync_state: str | None = None
     server_timestamp: datetime | None = None
     # True when this clientScanId had already been stored (idempotent resend)

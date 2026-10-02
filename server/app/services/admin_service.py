@@ -168,7 +168,8 @@ def resolve_scan(db: Session, scan: Scan, action: str, note: str | None, auth: A
     if scan.sync_state == Scan.STATE_ACCEPTED and scan.product_id is not None and db.scalar(
             select(InventoryMovement.id).where(InventoryMovement.scan_id == scan.id)) is None:
         # Accepted late: the physical volume now counts as stock (once; scan_id is unique in the ledger).
-        inventory_service.apply_movement(db, scan.product_id, InventoryMovement.SCAN_IN, 1, scan_id=scan.id,
+        inventory_service.apply_movement(db, scan.product_id, InventoryMovement.SCAN_IN, 1,
+                                         programming_id=scan.programming_id, scan_id=scan.id,
                                          device_id=scan.device_id, user_id=auth.user.id)
     AuditRepo(db).add("SCAN_CONFLICT_RESOLVED", actor_user_id=auth.user.id, entity_type="scan",
                       entity_id=str(scan.id), details={"from": previous, "to": scan.sync_state, "note": note})

@@ -9,6 +9,7 @@ import type { QueuedScan, ScanQueue } from "./queue.ts";
 
 export type ReadingOutcome =
   | { kind: "invalid"; raw: string }
+  | { kind: "no_programming"; raw: string }
   | { kind: "duplicate"; raw: string; productCode: string }
   | { kind: "queued"; scan: QueuedScan }
   | { kind: "error"; raw: string; message: string };
@@ -19,12 +20,17 @@ export interface PipelineContext {
   deviceId: string;
   operatorId: string | null;
   sessionId: string | null;
+  /** Programming the reading belongs to (web collector). */
+  programmingId?: string | null;
+  /** Production collection: refuse readings while no programming is selected. */
+  requireProgramming?: boolean;
   now?: () => number;
 }
 
 export async function submitReading(raw: string, source: QueuedScan["source"], ctx: PipelineContext): Promise<ReadingOutcome> {
   const productCode = normalizeProductCode(raw);
   if (productCode === null) return { kind: "invalid", raw };
+  if (ctx.requireProgramming && !ctx.programmingId) return { kind: "no_programming", raw };
   const now = ctx.now ? ctx.now() : Date.now();
   if (ctx.guard.isDuplicate(raw, now)) return { kind: "duplicate", raw, productCode };
 
@@ -36,6 +42,7 @@ export async function submitReading(raw: string, source: QueuedScan["source"], c
     deviceId: ctx.deviceId,
     operatorId: ctx.operatorId,
     sessionId: ctx.sessionId,
+    programmingId: ctx.programmingId ?? null,
     source,
     scannedAt: new Date(now).toISOString(),
     createdAt: now,

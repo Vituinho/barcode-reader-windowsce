@@ -1,6 +1,6 @@
 """HOMOLOGATION / MAINTENANCE TOOL: reset operational data before real production use.
 
-Removes loads, invoices, invoice lines, load requirements, dispatches, stock (movements + balances), scans,
+Removes load programmings, loads, invoices, invoice lines, load requirements, dispatches, stock (movements + balances), scans,
 barcode records seen by scans, and products created by XML imports. Keeps users, devices, collection
 sessions, software releases, audit log, and products that existed before any XML referenced them
 (seed/manual catalog). One transaction; tables are locked against concurrent writes during the reset.
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import DomainError, Forbidden
 from app.models import (Barcode, InventoryBalance, InventoryMovement, Invoice, InvoiceItem, Item, Load, LoadItem,
-                        Scan)
+                        LoadProgramming, Scan)
 from app.repositories.repos import AuditRepo
 from app.services.auth_service import AuthContext
 
@@ -28,7 +28,7 @@ def reset_operational_data(db: Session, confirmation: str, auth: AuthContext) ->
     # Block concurrent scans/imports/dispatches while the reset runs (released at commit/rollback).
     db.execute(text(
         "LOCK TABLE inventory_movements, inventory_balances, load_items, invoice_items, invoices, loads, "
-        "scans, barcodes, items IN SHARE ROW EXCLUSIVE MODE"))
+        "scans, barcodes, items, load_programmings IN SHARE ROW EXCLUSIVE MODE"))
 
     # Products created by XML import: referenced by imported invoice lines and created no earlier than the first
     # import that referenced them (same transaction). Pre-existing seed/manual products are kept.
@@ -50,6 +50,7 @@ def reset_operational_data(db: Session, confirmation: str, auth: AuthContext) ->
     run("invoices", delete(Invoice))
     run("loads", delete(Load))
     run("scans", delete(Scan))
+    run("programmings", delete(LoadProgramming))
     barcode_filter = Barcode.item_id.is_(None)
     if imported_ids:
         barcode_filter = barcode_filter | Barcode.item_id.in_(imported_ids)

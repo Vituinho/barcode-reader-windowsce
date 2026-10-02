@@ -41,6 +41,7 @@ export function buildScanPayload(scan: QueuedScan) {
     deviceId: scan.deviceId,
     operatorId: scan.operatorId,
     sessionId: scan.sessionId,
+    programmingId: scan.programmingId ?? null,
     barcode: scan.barcode,
     rawBarcode: scan.rawBarcode,
     source: scan.source === "CAMERA" ? "WEB_CAMERA" : "WEB",

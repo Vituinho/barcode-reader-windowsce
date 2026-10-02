@@ -10,6 +10,8 @@ export interface QueuedScan {
   deviceId: string;
   operatorId: string | null;
   sessionId: string | null;
+  /** Programming selected when the label was read; the scan always syncs into this one. */
+  programmingId: string | null;
   source: "KEYBOARD" | "CAMERA";
   scannedAt: string; // ISO with offset
   createdAt: number; // ms, ordering key

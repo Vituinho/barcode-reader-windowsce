@@ -114,7 +114,11 @@ class Scan(Base):
     STATE_SESSION_CLOSED = "SESSION_CLOSED"
     STATE_SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
     STATE_REJECTED = "REJECTED"
-    CONFLICT_STATES = (STATE_SESSION_CLOSED, STATE_SESSION_NOT_FOUND)
+    # Programming-scoped production scans
+    STATE_PROGRAMMING_CLOSED = "PROGRAMMING_CLOSED"  # synced after the programming was closed: review
+    STATE_PROGRAMMING_NOT_FOUND = "PROGRAMMING_NOT_FOUND"
+    CONFLICT_STATES = (STATE_SESSION_CLOSED, STATE_SESSION_NOT_FOUND, STATE_PROGRAMMING_CLOSED,
+                       STATE_PROGRAMMING_NOT_FOUND)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     client_scan_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -139,6 +143,8 @@ class Scan(Base):
     # First 10 characters of the scanned value (product code); NULL for scans older than this rule
     product_code: Mapped[str | None] = mapped_column(String(64), index=True)
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id"))
+    # Programming selected on the collector when the label was read (kept even for rejected readings)
+    programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"), index=True)
 
     barcode: Mapped[Barcode] = relationship(lazy="joined")
     operator: Mapped[User | None] = relationship(foreign_keys=[operator_id], lazy="joined")
@@ -327,6 +333,8 @@ class InventoryMovement(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     # One scan produces at most one stock entry: offline retries never add stock twice
     scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scans.id"), unique=True)
+    # Production stock bucket (NULL = legacy global stock)
+    programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"), index=True)
     load_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("loads.id"), index=True)
     reason: Mapped[str | None] = mapped_column(Text)
     device_id: Mapped[str | None] = mapped_column(String(40))
@@ -343,15 +351,25 @@ class InventoryMovement(Base):
 
 
 class InventoryBalance(Base):
-    """Current stock per product, updated in the same transaction as each movement. Rows are locked
-    (SELECT ... FOR UPDATE) during dispatch; the CHECK makes negative stock impossible."""
+    """Current stock per (programming, product), updated in the same transaction as each movement. Rows are
+    locked (SELECT ... FOR UPDATE) during dispatch; the CHECK makes negative stock impossible.
+    programming_id NULL is the legacy global bucket."""
 
     __tablename__ = "inventory_balances"
 
-    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"))
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    __table_args__ = (CheckConstraint("quantity >= 0", name="non_negative"),)
+    __table_args__ = (
+        CheckConstraint("quantity >= 0", name="non_negative"),
+        # One row per product in the legacy bucket, one per (programming, product) otherwise
+        Index("uq_inventory_balances_legacy_product", "product_id", unique=True,
+              postgresql_where=text("programming_id IS NULL")),
+        Index("uq_inventory_balances_programming_product", "programming_id", "product_id", unique=True,
+              postgresql_where=text("programming_id IS NOT NULL")),
+    )

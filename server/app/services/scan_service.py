@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import Conflict, DomainError, Forbidden
 from app.core.timeutil import device_time_to_utc, utcnow
-from app.models import Barcode, CollectionSession, Device, InventoryMovement, Scan
+from app.models import Barcode, CollectionSession, Device, InventoryMovement, LoadProgramming, Scan
 from app.repositories.repos import BarcodeRepo, DeviceRepo, ScanRepo, SessionRepo, UserRepo
 from app.schemas.collector import ScanIn, ScanResult
 from app.services import inventory_service, load_service
@@ -25,7 +25,7 @@ from app.services.auth_service import AuthContext
 
 
 def to_result(scan: Scan, replayed: bool = False, current_stock: int | None = None,
-              newly_ready_loads: int | None = None) -> ScanResult:
+              newly_ready_loads: int | None = None, ready_load_codes: list[str] | None = None) -> ScanResult:
     accepted_state = scan.sync_state == Scan.STATE_ACCEPTED
     product = scan.product
     return ScanResult(
@@ -39,6 +39,8 @@ def to_result(scan: Scan, replayed: bool = False, current_stock: int | None = No
         item_name=product.name if product else None,
         current_stock=current_stock,
         newly_ready_loads=newly_ready_loads,
+        ready_load_codes=ready_load_codes,
+        programming_id=scan.programming_id,
         sync_state=scan.sync_state,
         server_timestamp=scan.received_at_server,
         replayed=replayed,
@@ -57,7 +59,8 @@ def _check_device(db: Session, payload_device_id: str) -> Device:
 def _replay(db: Session, existing: Scan, payload: ScanIn) -> ScanResult:
     if existing.device_id != payload.device_id or existing.barcode.code != payload.barcode:
         raise Conflict("CLIENT_SCAN_ID_REUSED", "clientScanId already used for a different scan")
-    stock = inventory_service.balance_of(db, existing.product_id) if existing.product_id else None
+    stock = inventory_service.balance_of(db, existing.product_id, existing.programming_id) \
+        if existing.product_id else None
     return to_result(existing, replayed=True, current_stock=stock)
 
 
@@ -74,6 +77,22 @@ def _resolve_session(db: Session, raw_session_id: str | None) -> tuple[Collectio
     if session.status != CollectionSession.STATUS_OPEN:
         return session, Scan.STATE_SESSION_CLOSED
     return session, None
+
+
+def _resolve_programming(db: Session, raw_id: str | None) -> tuple[LoadProgramming | None, str | None]:
+    """Returns (programming, conflict_state). No id = legacy collector (global stock)."""
+    if not raw_id:
+        return None, None
+    try:
+        programming = db.get(LoadProgramming, uuid.UUID(raw_id))
+    except ValueError:
+        programming = None
+    if programming is None:
+        return None, Scan.STATE_PROGRAMMING_NOT_FOUND
+    if programming.status != LoadProgramming.STATUS_OPEN:
+        # Collected offline and synced after the programming closed: kept for review, never moved elsewhere.
+        return programming, Scan.STATE_PROGRAMMING_CLOSED
+    return programming, None
 
 
 def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
@@ -101,14 +120,17 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
     now = utcnow()
     current_stock = None
     newly_ready = None
+    ready_codes: list[str] | None = None
     try:
         product = inventory_service.product_by_code(db, product_code)
         barcode = BarcodeRepo(db).get_or_create(payload.barcode, scanned_at)
         if product is not None and barcode.item_id is None:
             barcode.item_id, barcode.status = product.id, Barcode.STATUS_KNOWN
         session, conflict_state = _resolve_session(db, payload.session_id)
+        programming, programming_state = _resolve_programming(db, payload.programming_id)
+        programming_id = programming.id if programming else None
 
-        state = conflict_state or Scan.STATE_ACCEPTED
+        state = programming_state or conflict_state or Scan.STATE_ACCEPTED
         if state == Scan.STATE_ACCEPTED:
             window = device.duplicate_window_seconds
             if window is None:
@@ -130,6 +152,7 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
             received_at_server=now,
             product_code=product_code,
             product_id=product.id if product else None,
+            programming_id=programming_id,
             result=Scan.RESULT_KNOWN if product else Scan.RESULT_UNKNOWN,
             sync_state=state,
         )
@@ -139,12 +162,15 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
         if product is not None:
             if state == Scan.STATE_ACCEPTED:
                 # Same transaction as the scan row: both are committed or neither.
+                # Production stock of the selected programming; any compatible load of that programming
+                # may use it. A load number embedded in the label is deliberately ignored.
                 current_stock = inventory_service.apply_movement(
-                    db, product.id, InventoryMovement.SCAN_IN, 1, scan_id=scan.id, device_id=device.id,
-                    user_id=operator_id, now=now)
-                newly_ready = load_service.newly_ready_count(db, product.id, current_stock)
+                    db, product.id, InventoryMovement.SCAN_IN, 1, programming_id=programming_id, scan_id=scan.id,
+                    device_id=device.id, user_id=operator_id, now=now)
+                ready_codes = load_service.newly_ready_loads(db, product.id, current_stock, programming_id)
+                newly_ready = len(ready_codes)
             else:
-                current_stock = inventory_service.balance_of(db, product.id)
+                current_stock = inventory_service.balance_of(db, product.id, programming_id)
         device.last_seen_at = now
         db.commit()
     except IntegrityError:
@@ -156,7 +182,7 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
         return _replay(db, existing, payload)
 
     db.refresh(scan)
-    return to_result(scan, current_stock=current_stock, newly_ready_loads=newly_ready)
+    return to_result(scan, current_stock=current_stock, newly_ready_loads=newly_ready, ready_load_codes=ready_codes)
 
 
 def submit_batch(db: Session, payloads: list[ScanIn], auth: AuthContext) -> list[ScanResult]:

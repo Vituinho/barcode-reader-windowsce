@@ -74,11 +74,15 @@ def build_views(db: Session, loads: list[Load]) -> list[LoadView]:
         return []
     items = db.scalars(select(LoadItem).where(LoadItem.load_id.in_([l.id for l in loads]))).unique().all()
     product_ids = {i.product_id for i in items}
-    stock = dict(db.execute(select(InventoryBalance.product_id, InventoryBalance.quantity)
-                            .where(InventoryBalance.product_id.in_(product_ids))).all()) if product_ids else {}
+    # Production stock is per (programming, product): a load only sees its own programming's stock.
+    stock = {(pid, prod): qty for pid, prod, qty in db.execute(
+        select(InventoryBalance.programming_id, InventoryBalance.product_id, InventoryBalance.quantity)
+        .where(InventoryBalance.product_id.in_(product_ids))).all()} if product_ids else {}
     views = {l.id: LoadView(l) for l in loads}
     for item in items:
-        views[item.load_id].requirements.append(RequirementView(item, stock.get(item.product_id, 0)))
+        load = views[item.load_id].load
+        views[item.load_id].requirements.append(
+            RequirementView(item, stock.get((load.programming_id, item.product_id), 0)))
     for v in views.values():
         v.requirements.sort(key=lambda r: (r.missing == 0, r.item.product.sku or ""))
     return [views[l.id] for l in loads]
@@ -144,14 +148,22 @@ def dispatch_movements(db: Session, load_id: uuid.UUID) -> list[InventoryMovemen
                            .order_by(InventoryMovement.created_at)).unique())
 
 
-def newly_ready_count(db: Session, product_id: uuid.UUID, stock_after: int) -> int:
-    """Loads that just became READY because this product's stock reached exactly what they need."""
+def newly_ready_loads(db: Session, product_id: uuid.UUID, stock_after: int,
+                      programming_id: uuid.UUID | None = None) -> list[str]:
+    """Codes of loads (same programming) that just became READY because this product's stock reached
+    exactly what they need. Independent of any load number embedded in the scanned label."""
+    bucket = Load.programming_id.is_(None) if programming_id is None else Load.programming_id == programming_id
     candidates = db.scalars(
         select(Load).join(LoadItem, LoadItem.load_id == Load.id)
-        .where(Load.status == Load.STATUS_PENDING, LoadItem.product_id == product_id,
+        .where(Load.status == Load.STATUS_PENDING, bucket, LoadItem.product_id == product_id,
                LoadItem.required_quantity == stock_after)
     ).unique().all()
-    return sum(1 for v in build_views(db, list(candidates)) if v.status == Load.STATUS_READY)
+    return [v.load.external_code for v in build_views(db, list(candidates)) if v.status == Load.STATUS_READY]
+
+
+def newly_ready_count(db: Session, product_id: uuid.UUID, stock_after: int,
+                      programming_id: uuid.UUID | None = None) -> int:
+    return len(newly_ready_loads(db, product_id, stock_after, programming_id))
 
 
 def dashboard_counts(db: Session) -> dict:
@@ -214,7 +226,8 @@ def dispatch(db: Session, load_id: uuid.UUID, auth: AuthContext) -> Load:
 
         product_ids = sorted({i.product_id for i in items}, key=str)
         balances = {b.product_id: b for b in db.scalars(
-            select(InventoryBalance).where(InventoryBalance.product_id.in_(product_ids))
+            select(InventoryBalance).where(InventoryBalance.product_id.in_(product_ids),
+                                           inventory_service.in_bucket(load.programming_id))
             .order_by(InventoryBalance.product_id).with_for_update().execution_options(populate_existing=True))}
         shortages = [f"{i.product.sku} (falta {i.required_quantity - (balances[i.product_id].quantity if i.product_id in balances else 0)})"
                      for i in items
@@ -226,7 +239,8 @@ def dispatch(db: Session, load_id: uuid.UUID, auth: AuthContext) -> Load:
         now = utcnow()
         for item in items:
             inventory_service.apply_movement(db, item.product_id, InventoryMovement.DISPATCH_OUT,
-                                             -item.required_quantity, load_id=load.id, user_id=auth.user.id, now=now)
+                                             -item.required_quantity, programming_id=load.programming_id,
+                                             load_id=load.id, user_id=auth.user.id, now=now)
         load.status = Load.STATUS_DISPATCHED
         load.dispatched_at = now
         load.dispatched_by_id = auth.user.id
@@ -259,7 +273,7 @@ def list_dispatches(db: Session, limit: int = 200) -> list[tuple[Load, int, int]
 
 def volumes_registered(db: Session, programming_id: uuid.UUID | None) -> int:
     """Production volumes collected for a programming (scan entries; dispatches do not reduce it)."""
-    if programming_id is None or not hasattr(InventoryMovement, "programming_id"):
+    if programming_id is None:
         return 0
     return int(db.scalar(select(func.coalesce(func.sum(InventoryMovement.quantity), 0)).where(
         InventoryMovement.programming_id == programming_id, InventoryMovement.type == InventoryMovement.SCAN_IN)) or 0)

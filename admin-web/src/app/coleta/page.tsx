@@ -15,6 +15,7 @@ import { createDuplicateGuard, scannerKeyAction } from "@/collector/barcode";
 import { feedback, primeAudio, setSoundEnabled, soundEnabled } from "@/collector/feedback";
 import { getDeviceIdentity, setDeviceName, type DeviceIdentity } from "@/collector/identity";
 import { submitReading } from "@/collector/pipeline";
+import { loadRememberedProgramming, programmingLabel, rememberProgramming, validateRemembered, type ProgrammingChoice } from "@/collector/programming";
 import { pendingLogoutMessage } from "@/collector/logout";
 import { openScanQueue } from "@/collector/store";
 import type { QueuedScan, ScanQueue } from "@/collector/queue";
@@ -28,6 +29,7 @@ type Display =
   | { kind: "unknown" | "conflict"; code: string }
   | { kind: "duplicate"; code: string }
   | { kind: "invalid"; raw: string }
+  | { kind: "no_programming" }
   | { kind: "rejected" | "error"; code: string; message: string };
 
 interface SessionChoice {
@@ -87,6 +89,8 @@ export default function ColetaPage() {
   const [session, setSession] = useState<SessionChoice | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [programmings, setProgrammings] = useState<ProgrammingChoice[]>([]);
+  const [programming, setProgramming] = useState<ProgrammingChoice | null>(null);
   const [hasCamera, setHasCamera] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +100,7 @@ export default function ColetaPage() {
   const lastScanIdRef = useRef<string | null>(null);
   const connectionRef = useRef<Connection>("UNKNOWN");
   const sessionRef = useRef<SessionChoice | null>(null);
+  const programmingRef = useRef<ProgrammingChoice | null>(null);
   const userRef = useRef<SessionUser | null>(null);
   const deviceRef = useRef<DeviceIdentity | null>(null);
   const busyRef = useRef(false);
@@ -126,6 +131,9 @@ export default function ColetaPage() {
     setHasCamera(cameraSupported());
     try {
       setTabCompletes(localStorage.getItem(TAB_KEY) !== "off");
+      const remembered = loadRememberedProgramming(window.localStorage);
+      setProgramming(remembered);
+      programmingRef.current = remembered;
       const s = localStorage.getItem(SESSION_KEY);
       if (s) {
         const parsed = JSON.parse(s) as SessionChoice;
@@ -174,6 +182,21 @@ export default function ColetaPage() {
       engineRef.current?.stop();
     };
   }, [router, refreshRecent]);
+
+  // OPEN programmings: the collector always collects for one; a remembered programming that closed is cleared.
+  useEffect(() => {
+    if (!user) return;
+    api<ProgrammingChoice[]>("/api/programmings?status=OPEN", { noRedirect: true })
+      .then((list) => {
+        const open = list.map((p) => ({ id: p.id, scheduledDate: p.scheduledDate, name: p.name }));
+        setProgrammings(open);
+        const current = programmingRef.current;
+        const valid = validateRemembered(current, open);
+        if (current && !valid) setNotice(`A programação ${programmingLabel(current)} foi encerrada. Selecione outra programação.`);
+        chooseProgramming(valid);
+      })
+      .catch(() => undefined); // offline: keep the remembered programming
+  }, [user]);
 
   // OPEN sessions (optional for scans); a remembered session that was closed is cleared.
   useEffect(() => {
@@ -226,8 +249,13 @@ export default function ColetaPage() {
       deviceId: dev.id,
       operatorId: userRef.current?.id ?? null,
       sessionId: sessionRef.current?.id ?? null,
+      programmingId: programmingRef.current?.id ?? null,
+      requireProgramming: true,
     });
-    if (outcome.kind === "invalid") {
+    if (outcome.kind === "no_programming") {
+      setDisplay({ kind: "no_programming" });
+      feedback("error");
+    } else if (outcome.kind === "invalid") {
       setDisplay({ kind: "invalid", raw: outcome.raw.trim() });
       feedback("error");
     } else if (outcome.kind === "duplicate") {
@@ -264,6 +292,12 @@ export default function ColetaPage() {
   };
 
   // ---- settings --------------------------------------------------------------------------------
+  function chooseProgramming(choice: ProgrammingChoice | null) {
+    setProgramming(choice);
+    programmingRef.current = choice;
+    rememberProgramming(window.localStorage, choice);
+  }
+
   function chooseSession(choice: SessionChoice | null) {
     setSession(choice);
     sessionRef.current = choice;
@@ -345,7 +379,21 @@ export default function ColetaPage() {
         <div className="mx-auto flex max-w-6xl flex-wrap gap-x-4 gap-y-0.5 px-3 pb-2 text-xs text-slate-500 sm:px-4">
           <span>Operador: <b className="text-slate-700">{user.fullName}</b></span>
           <span>Dispositivo: <b className="text-slate-700">{device.name}</b></span>
-          <span>Sessão: <b className="text-slate-700">{session?.name ?? "sem sessão"}</b></span>
+          {session && <span>Sessão: <b className="text-slate-700">{session.name}</b></span>}
+        </div>
+        <div className={`border-t ${programming ? "border-slate-100 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
+          <div className="mx-auto flex max-w-6xl items-center gap-3 px-3 py-1.5 sm:px-4">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Programação</span>
+            <span className={`min-w-0 truncate text-sm font-bold ${programming ? "text-slate-900" : "text-amber-800"}`}>
+              {programming ? programmingLabel(programming) : "nenhuma selecionada"}
+            </span>
+            <button
+              onClick={() => setMenuOpen(true)}
+              className="ml-auto h-8 shrink-0 rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              TROCAR
+            </button>
+          </div>
         </div>
       </header>
 
@@ -379,7 +427,7 @@ export default function ColetaPage() {
       {/* ---- main ---- */}
       <main className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-[minmax(0,1fr)] gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="flex min-h-0 flex-col gap-3">
-          <StatusPanel display={display} pending={pending} />
+          <StatusPanel display={display} pending={pending} programming={programming} onChooseProgramming={() => setMenuOpen(true)} />
 
           <label className="block">
             <span className="sr-only">Leitura do código de barras</span>
@@ -514,6 +562,24 @@ export default function ColetaPage() {
               )}
 
               <label className="block font-medium text-slate-700">
+                Programação de cargas
+                <select
+                  value={programming?.id ?? ""}
+                  onChange={(e) => chooseProgramming(programmings.find((x) => x.id === e.target.value) ?? null)}
+                  className="mt-1.5 block h-12 w-full rounded-md border border-slate-300 bg-white px-3 text-base"
+                >
+                  <option value="">Selecione…</option>
+                  {programming && !programmings.some((p) => p.id === programming.id) && (
+                    <option value={programming.id}>{programmingLabel(programming)}</option>
+                  )}
+                  {programmings.map((p) => <option key={p.id} value={p.id}>{programmingLabel(p)}</option>)}
+                </select>
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  Volumes coletados entram no estoque de produção desta programação e cobrem qualquer carga dela.
+                </span>
+              </label>
+
+              <label className="block font-medium text-slate-700">
                 Sessão de coleta (opcional)
                 <select
                   value={session?.id ?? ""}
@@ -600,6 +666,8 @@ function cameraStatus(d: Display): { label: string; tone: "ok" | "warn" | "bad" 
       return { label: `SALVO · ENVIANDO ${d.code}`, tone: "info" };
     case "idle":
       return null;
+    case "no_programming":
+      return { label: "SELECIONE UMA PROGRAMAÇÃO", tone: "warn" };
     default:
       return { label: "ERRO", tone: "bad" };
   }
@@ -625,7 +693,9 @@ function ToggleRow({ label, on, onChange, icon: Icon }: { label: string; on: boo
 }
 
 /** The one thing an operator must see from a distance: what happened to the last reading. */
-function StatusPanel({ display, pending }: { display: Display; pending: number }) {
+function StatusPanel({ display, pending, programming, onChooseProgramming }: {
+  display: Display; pending: number; programming: ProgrammingChoice | null; onChooseProgramming: () => void;
+}) {
   const big = "text-[clamp(2rem,9vw,4rem)] font-black leading-none tracking-tight";
   const code = "font-mono text-[clamp(1.75rem,7vw,3.25rem)] font-bold leading-tight tracking-wider break-all";
   const base = "flex min-h-[18rem] flex-1 flex-col items-center justify-center gap-3 rounded-xl px-5 py-8 text-center lg:min-h-[24rem]";
@@ -634,12 +704,27 @@ function StatusPanel({ display, pending }: { display: Display; pending: number }
   let cls: string;
   switch (display.kind) {
     case "idle":
+    case "no_programming":
+      if (!programming || display.kind === "no_programming") {
+        cls = "border-2 border-amber-300 bg-amber-50 text-amber-950";
+        body = (
+          <>
+            <div className="text-[clamp(1.5rem,6vw,2.5rem)] font-black leading-tight tracking-tight">SELECIONE UMA<br />PROGRAMAÇÃO</div>
+            <p className="max-w-md text-base">Os volumes produzidos são registrados no estoque da programação de cargas escolhida.</p>
+            <button onClick={onChooseProgramming} className="mt-2 h-12 rounded-md bg-orange-600 px-6 text-sm font-bold text-white hover:bg-orange-700">
+              SELECIONAR PROGRAMAÇÃO
+            </button>
+          </>
+        );
+        break;
+      }
       cls = "border-2 border-dashed border-slate-300 bg-white text-slate-700";
       body = (
         <>
           <ScanLine className="size-14 text-orange-600" aria-hidden />
           <div className="text-[clamp(1.5rem,6vw,2.5rem)] font-black tracking-tight">PRONTO PARA LER</div>
-          <p className="text-base text-slate-500">Aponte o leitor para uma etiqueta</p>
+          <p className="text-base text-slate-500">Leia o código de barras <b>maior</b> da etiqueta de produção</p>
+          <p className="text-sm font-semibold text-slate-600">Programação {programmingLabel(programming)}</p>
         </>
       );
       break;

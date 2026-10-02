@@ -123,21 +123,25 @@ def dispatches(db: Session = Depends(get_db), _: AuthContext = Depends(current_a
 
 @router.get("/api/inventory", response_model=list[InventoryRowOut])
 def inventory(q: str | None = None, in_stock: bool = Query(default=False, alias="inStock"),
+              programming_id: uuid.UUID | None = Query(default=None, alias="programmingId"),
               db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):
-    return inventory_service.list_inventory(db, q, in_stock)
+    return inventory_service.list_inventory(db, q, in_stock, programming_id=programming_id)
 
 
 @router.get("/api/inventory/{product_code}/movements", response_model=InventoryMovementsOut)
-def inventory_movements(product_code: str, db: Session = Depends(get_db), _: AuthContext = Depends(admin_auth)):
-    product, rows = inventory_service.movements(db, product_code)
+def inventory_movements(product_code: str,
+                        programming_id: uuid.UUID | None = Query(default=None, alias="programmingId"),
+                        db: Session = Depends(get_db), _: AuthContext = Depends(admin_auth)):
+    product, rows = inventory_service.movements(db, product_code, programming_id=programming_id)
     return InventoryMovementsOut(product_code=product.sku, description=product.name,
-                                 quantity=inventory_service.balance_of(db, product.id),
+                                 quantity=inventory_service.total_of(db, product.id, programming_id),
                                  movements=[_movement(m) for m in rows])
 
 
 @router.post("/api/inventory/adjustments", response_model=AdjustmentOut)
 def inventory_adjustment(data: AdjustmentIn, db: Session = Depends(get_db), auth: AuthContext = Depends(admin_auth)):
-    balance = inventory_service.adjust(db, data.product_code.strip(), data.quantity, data.reason, auth)
+    balance = inventory_service.adjust(db, data.product_code.strip(), data.quantity, data.reason, auth,
+                                       programming_id=data.programming_id)
     return AdjustmentOut(product_code=data.product_code.strip(), quantity=balance)
 
 

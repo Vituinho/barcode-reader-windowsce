@@ -141,6 +141,8 @@ class AdjustmentIn(ApiModel):
     product_code: str = Field(min_length=1, max_length=80)
     quantity: int = Field(ge=-100_000, le=100_000)
     reason: str = Field(min_length=3, max_length=500)
+    # Production stock bucket to adjust (None = legacy global stock)
+    programming_id: uuid.UUID | None = None
 
     @field_validator("quantity")
     @classmethod
