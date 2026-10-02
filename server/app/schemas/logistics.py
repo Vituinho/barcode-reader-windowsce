@@ -1,6 +1,6 @@
 """Schemas for NF-e import, loads, inventory and dispatch."""
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import Field, field_validator
 
@@ -172,3 +172,24 @@ class UnknownCodeOut(ApiModel):
     last_raw_barcode: str | None
     last_device_id: str | None
     last_operator_name: str | None
+
+
+class ProgrammingIn(ApiModel):
+    scheduled_date: date
+    name: str | None = Field(default=None, max_length=150)
+
+
+class ProgrammingOut(ApiModel):
+    id: uuid.UUID
+    scheduled_date: date
+    name: str | None
+    status: str
+    created_at: datetime
+    closed_at: datetime | None = None
+    load_count: int = 0
+    ready_count: int = 0
+    pending_count: int = 0
+    review_count: int = 0
+    dispatched_count: int = 0
+    volumes_registered: int = 0
+    warning_invoices: int = 0

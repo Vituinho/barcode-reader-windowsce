@@ -86,8 +86,9 @@ def import_xml(files: list[UploadFile] = File(...), db: Session = Depends(get_db
 
 @router.get("/api/loads", response_model=list[LoadSummaryOut])
 def loads(status: str | None = Query(default=None, pattern="^(PENDING|READY|DISPATCHED|REVIEW)$"),
-          q: str | None = None, db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):
-    views = load_service.list_views(db, status, q)
+          q: str | None = None, programming_id: uuid.UUID | None = Query(default=None, alias="programmingId"),
+          db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):
+    views = load_service.list_views(db, status, q, programming_id=programming_id)
     stats = load_service.invoice_stats(db, [v.load.id for v in views])
     return [_summary(v, stats.get(v.load.id)) for v in views]
 

@@ -84,8 +84,11 @@ def build_views(db: Session, loads: list[Load]) -> list[LoadView]:
     return [views[l.id] for l in loads]
 
 
-def list_views(db: Session, status: str | None = None, q: str | None = None, limit: int = 500) -> list[LoadView]:
+def list_views(db: Session, status: str | None = None, q: str | None = None, limit: int = 500,
+               programming_id: uuid.UUID | None = None) -> list[LoadView]:
     stmt = select(Load).order_by(Load.status != Load.STATUS_PENDING, Load.external_code).limit(limit)
+    if programming_id:
+        stmt = stmt.where(Load.programming_id == programming_id)
     if status == Load.STATUS_DISPATCHED:
         stmt = stmt.where(Load.status == Load.STATUS_DISPATCHED)
     elif status in (Load.STATUS_PENDING, Load.STATUS_READY, "REVIEW"):
@@ -252,3 +255,11 @@ def list_dispatches(db: Session, limit: int = 200) -> list[tuple[Load, int, int]
                       .where(Load.status == Load.STATUS_DISPATCHED)
                       .order_by(Load.dispatched_at.desc()).limit(limit)).unique()
     return [(load, int(v), int(n)) for load, v, n in rows]
+
+
+def volumes_registered(db: Session, programming_id: uuid.UUID | None) -> int:
+    """Production volumes collected for a programming (scan entries; dispatches do not reduce it)."""
+    if programming_id is None or not hasattr(InventoryMovement, "programming_id"):
+        return 0
+    return int(db.scalar(select(func.coalesce(func.sum(InventoryMovement.quantity), 0)).where(
+        InventoryMovement.programming_id == programming_id, InventoryMovement.type == InventoryMovement.SCAN_IN)) or 0)

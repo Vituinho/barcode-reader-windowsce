@@ -6,9 +6,10 @@ database enum migrations. Allowed values are listed as constants on each class.
 import uuid
 from datetime import datetime
 
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import (JSON, BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+from sqlalchemy import (JSON, BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
                         UniqueConstraint, Uuid, func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -197,6 +198,27 @@ class SoftwareRelease(Base):
     )
 
 
+class LoadProgramming(Base):
+    """Programação de cargas: a production day. NF-e archives are imported into it, production scans are
+    collected for it, and its production stock only covers loads of the same programming."""
+
+    __tablename__ = "load_programmings"
+    STATUS_OPEN = "OPEN"
+    STATUS_CLOSED = "CLOSED"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    scheduled_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(150))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=STATUS_OPEN, index=True)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class Load(Base):
     """Load / route (Carga) defined by imported NF-e XMLs. READY is computed from stock, never stored."""
 
@@ -207,6 +229,8 @@ class Load(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     external_code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    # NULL only for loads imported before programmings existed (legacy global stock)
+    programming_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("load_programmings.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=STATUS_PENDING, index=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

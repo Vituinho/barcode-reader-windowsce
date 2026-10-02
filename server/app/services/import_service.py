@@ -9,6 +9,7 @@ only when it can be derived safely (discrete unit such as UN, integer qCom, and 
 invoice lines). Otherwise the requirement is left without a count (needs review) and a warning is recorded.
 """
 import io
+import uuid
 import posixpath
 import re
 import zipfile
@@ -314,7 +315,9 @@ def _is_discrete(line: ParsedLine) -> bool:
         and line.quantity > 0
 
 
-def import_files(db: Session, uploads: list[tuple[str, bytes]], auth: AuthContext) -> ImportReport:
+def import_files(db: Session, uploads: list[tuple[str, bytes]], auth: AuthContext,
+                 programming_id: uuid.UUID | None = None) -> ImportReport:
+    """Imports NF-e files. With programming_id, every created load belongs to that programming."""
     report = ImportReport()
     sources = collect_sources(uploads, report)
     products: dict[str, Item] = {}
@@ -347,7 +350,8 @@ def import_files(db: Session, uploads: list[tuple[str, bytes]], auth: AuthContex
             continue
         try:
             with db.begin_nested():
-                _import_invoice(db, parsed, src.name, label, auth, report, products, touched_products)
+                _import_invoice(db, parsed, src.name, label, auth, report, products, touched_products,
+                                programming_id)
             seen_keys.add(parsed.access_key)
         except _Rejected as exc:
             products.clear()  # objects created inside the rolled-back savepoint are gone
@@ -358,6 +362,7 @@ def import_files(db: Session, uploads: list[tuple[str, bytes]], auth: AuthContex
             report.duplicates_skipped += 1
 
     AuditRepo(db).add("XML_IMPORTED", actor_user_id=auth.user.id, entity_type="import",
+                      entity_id=str(programming_id) if programming_id else None,
                       details={"invoices": report.invoices_imported, "duplicates": report.duplicates_skipped,
                                "invalid": len(report.invalid), "loads_created": report.loads_created})
     db.commit()
@@ -393,14 +398,19 @@ def _product(db: Session, line: ParsedLine, cache: dict[str, Item], touched: set
 
 
 def _import_invoice(db: Session, p: ParsedInvoice, file_name: str, label: str, auth: AuthContext,
-                    report: ImportReport, cache: dict[str, Item], touched: set[str]) -> None:
+                    report: ImportReport, cache: dict[str, Item], touched: set[str],
+                    programming_id: uuid.UUID | None = None) -> None:
     load = db.scalars(select(Load).where(Load.external_code == p.load_code).with_for_update(of=Load)).first()
     if load is None:
-        load = Load(external_code=p.load_code, status=Load.STATUS_PENDING)
+        load = Load(external_code=p.load_code, status=Load.STATUS_PENDING, programming_id=programming_id)
         db.add(load)
         db.flush()
         if p.load_code not in report.loads_created:
             report.loads_created.append(p.load_code)
+    elif load.programming_id != programming_id:
+        # A load belongs to exactly one programming; never move it silently.
+        raise _Rejected("LOAD_IN_OTHER_PROGRAMMING",
+                        f"Carga {p.load_code} já pertence a outra programação: NF-e {p.invoice_number} não importada")
     elif load.status == Load.STATUS_DISPATCHED:
         raise _Rejected("LOAD_ALREADY_DISPATCHED",
                         f"Carga {p.load_code} já expedida: NF-e {p.invoice_number} não importada")
