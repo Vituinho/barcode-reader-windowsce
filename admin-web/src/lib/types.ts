@@ -90,7 +90,21 @@ export interface Dashboard {
   loadsReview: number;
   loadsDispatchedToday: number;
   readyLoads: { id: string; externalCode: string; volumes: number }[];
+  openProgrammings: ProgrammingKpi[];
   serverTime: string;
+}
+
+export interface ProgrammingKpi {
+  id: string;
+  scheduledDate: string;
+  name: string | null;
+  loadCount: number;
+  readyCount: number;
+  dispatchedCount: number;
+  requiredVolumes: number;
+  coveredVolumes: number;
+  missingVolumes: number;
+  progress: number;
 }
 
 export type Platform = "WINDOWS_CE" | "WINDOWS_DESKTOP";
@@ -117,11 +131,18 @@ export interface LoadSummary {
   externalCode: string;
   status: LoadStatus;
   needsReview: boolean;
+  /** PREVISTO */
   requiredVolumes: number;
   availableVolumes: number;
+  /** COBERTO: volumes of this load covered by the programming's stock (stock is shared, never reserved) */
+  coveredVolumes: number;
+  /** DISPONÍVEL: production stock of this load's products in its programming */
+  stockVolumes: number;
+  /** FALTA */
   missingVolumes: number;
   progress: number;
   productLines: number;
+  programmingId: string | null;
   invoiceCount: number;
   customerCount: number;
   warningInvoices: number;

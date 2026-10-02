@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound
 from app.core.timeutil import utcnow
-from app.models import Invoice, Load, LoadProgramming
+from app.models import InventoryBalance, Invoice, Load, LoadProgramming
 from app.repositories.repos import AuditRepo
 from app.services.auth_service import AuthContext
 
@@ -64,3 +64,9 @@ def load_ids(db: Session, programming_id: uuid.UUID) -> list[uuid.UUID]:
 def warning_invoices(db: Session, programming_id: uuid.UUID) -> int:
     return db.scalar(select(func.count()).select_from(Invoice).join(Load, Load.id == Invoice.load_id).where(
         Load.programming_id == programming_id, func.json_typeof(Invoice.warnings) == "array")) or 0
+
+
+def stock_volumes(db: Session, programming_id: uuid.UUID) -> int:
+    """Current production stock (all products) of the programming."""
+    return db.scalar(select(func.coalesce(func.sum(InventoryBalance.quantity), 0))
+                     .where(InventoryBalance.programming_id == programming_id)) or 0

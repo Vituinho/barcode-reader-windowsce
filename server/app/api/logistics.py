@@ -25,7 +25,8 @@ def _summary(view: LoadView, stats: tuple[int, int, int] | None = None) -> dict:
     n, customers, warned = stats or (0, 0, 0)
     return dict(
         id=load.id, external_code=load.external_code, status=view.status, needs_review=view.needs_review,
-        required_volumes=required, available_volumes=available, missing_volumes=view.missing_total,
+        required_volumes=required, available_volumes=available, covered_volumes=available,
+        stock_volumes=view.stock_total, missing_volumes=view.missing_total, programming_id=load.programming_id,
         progress=100 if view.status == "DISPATCHED" else (int(available * 100 / required) if required else 0),
         product_lines=len(view.requirements), invoice_count=n, customer_count=customers, warning_invoices=warned,
         imported_at=load.imported_at, dispatched_at=load.dispatched_at,

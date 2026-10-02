@@ -8,7 +8,7 @@ from app.api.deps import admin_auth, current_auth
 from app.core.database import get_db
 from app.core.errors import DomainError
 from app.models import LoadProgramming
-from app.schemas.logistics import ImportReportOut, ProgrammingIn, ProgrammingOut
+from app.schemas.logistics import ImportReportOut, ProductCoverageOut, ProgrammingIn, ProgrammingOut
 from app.services import import_service, load_service, programming_service
 from app.services.auth_service import AuthContext
 
@@ -25,6 +25,9 @@ def programming_out(db: Session, p: LoadProgramming) -> ProgrammingOut:
     out.pending_count = out.load_count - out.dispatched_count - out.ready_count
     out.volumes_registered = load_service.volumes_registered(db, p.id)
     out.warning_invoices = programming_service.warning_invoices(db, p.id)
+    for key, value in load_service.programming_totals(views).items():
+        setattr(out, key, value)
+    out.stock_volumes = programming_service.stock_volumes(db, p.id)
     return out
 
 
@@ -55,6 +58,15 @@ def get_programming(programming_id: uuid.UUID, db: Session = Depends(get_db), _:
 @router.post("/{programming_id}/close", response_model=ProgrammingOut)
 def close_programming(programming_id: uuid.UUID, db: Session = Depends(get_db), auth: AuthContext = Depends(admin_auth)):
     return programming_out(db, programming_service.set_status(db, programming_id, False, auth))
+
+
+@router.get("/{programming_id}/products", response_model=list[ProductCoverageOut])
+def product_coverage(programming_id: uuid.UUID, db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):
+    programming_service.get(db, programming_id)
+    return [ProductCoverageOut(product_code=p.product_code, description=p.description, required=p.required,
+                               covered=p.covered, stock=p.stock, missing=p.missing, dispatched=p.dispatched,
+                               open_loads=p.open_loads, needs_review=p.needs_review)
+            for p in load_service.product_coverage(db, programming_id)]
 
 
 @router.get("/{programming_id}/scan-rules")

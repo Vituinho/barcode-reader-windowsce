@@ -1,6 +1,6 @@
 """Schemas used by the admin web panel."""
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import Field
 
@@ -157,6 +157,19 @@ class ReadyLoad(ApiModel):
     volumes: int
 
 
+class ProgrammingKpi(ApiModel):
+    id: uuid.UUID
+    scheduled_date: date
+    name: str | None = None
+    load_count: int
+    ready_count: int
+    dispatched_count: int
+    required_volumes: int
+    covered_volumes: int
+    missing_volumes: int
+    progress: int
+
+
 class DashboardOut(ApiModel):
     scans_today: int
     unknown_scans_today: int
@@ -172,6 +185,7 @@ class DashboardOut(ApiModel):
     loads_review: int = 0
     loads_dispatched_today: int = 0
     ready_loads: list[ReadyLoad] = []
+    open_programmings: list[ProgrammingKpi] = []
     server_time: datetime
 
 

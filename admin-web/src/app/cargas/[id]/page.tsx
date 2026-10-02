@@ -126,15 +126,15 @@ export default function LoadDetailPage() {
 
       <dl className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[
-          ["NF-e", load.invoiceCount],
-          ["Volumes necessários", load.requiredVolumes],
-          ["Disponíveis", load.availableVolumes],
-          ["Faltantes", state === "DISPATCHED" ? 0 : load.missingVolumes],
-          ["Clientes / destinos", load.customerCount],
+          ["Previsto", load.requiredVolumes],
+          ["Coberto", state === "DISPATCHED" ? load.requiredVolumes : load.coveredVolumes],
+          ["Disponível", state === "DISPATCHED" ? "—" : load.stockVolumes],
+          ["Falta", state === "DISPATCHED" ? 0 : load.missingVolumes],
+          ["NF-e / clientes", `${load.invoiceCount} / ${load.customerCount}`],
         ].map(([label, value]) => (
           <div key={label as string} className="rounded-lg border border-slate-200 bg-white p-3">
             <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
-            <dd className={`mt-1 text-2xl font-bold tabular-nums ${label === "Faltantes" && Number(value) > 0 ? "text-amber-700" : ""}`}>{value}</dd>
+            <dd className={`mt-1 text-2xl font-bold tabular-nums ${label === "Falta" && Number(value) > 0 ? "text-amber-700" : ""}`}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -164,8 +164,9 @@ export default function LoadDetailPage() {
                 </div>
                 <div className="mt-0.5 text-sm text-slate-700">{r.description}</div>
                 <div className="mt-1.5 flex gap-4 text-xs text-slate-500">
-                  <span>Precisa <b className="text-sm text-slate-900">{r.requiredQuantity ?? "—"}</b></span>
-                  <span>Estoque <b className="text-sm text-slate-900">{r.stock}</b></span>
+                  <span>Previsto <b className="text-sm text-slate-900">{r.requiredQuantity ?? "—"}</b></span>
+                  <span>Coberto <b className="text-sm text-slate-900">{r.needsReview ? "—" : r.available}</b></span>
+                  <span>Disponível <b className="text-sm text-slate-900">{r.stock}</b></span>
                   {short && <span>Falta <b className="text-sm text-amber-800">{r.missing}</b></span>}
                 </div>
                 {r.reviewReason && <div className="mt-1 text-xs text-purple-800">{r.reviewReason} · NF-e: {r.commercialQuantity} {r.unit}</div>}
@@ -178,8 +179,8 @@ export default function LoadDetailPage() {
         </ul>
         <div className="hidden sm:block">
         <Table
-          head={["Código", "Produto", { label: "Necessário", align: "right" }, { label: "Estoque", align: "right" }, { label: "Falta", align: "right" }, "Status", ""]}
-          minWidth={760}
+          head={["Código", "Produto", { label: "Previsto", align: "right" }, { label: "Coberto", align: "right" }, { label: "Disponível", align: "right" }, { label: "Falta", align: "right" }, "Status", ""]}
+          minWidth={820}
           bare
         >
           {load.requirements.map((r) => {
@@ -193,6 +194,7 @@ export default function LoadDetailPage() {
                   {r.resolutionNote && <div className="text-xs text-slate-500">Definido manualmente: {r.resolutionNote}</div>}
                 </Td>
                 <Td align="right">{r.requiredQuantity ?? "—"}</Td>
+                <Td align="right">{r.needsReview ? "—" : state === "DISPATCHED" ? r.requiredQuantity : r.available}</Td>
                 <Td align="right">{r.stock}</Td>
                 <Td align="right">{r.needsReview || state === "DISPATCHED" ? "—" : short ? <b className="text-amber-800">{r.missing}</b> : 0}</Td>
                 <Td>

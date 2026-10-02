@@ -9,6 +9,7 @@ import { api, errorMessage, fmtAge, fmtDateTime } from "@/lib/api";
 import type { Dashboard, Device } from "@/lib/types";
 
 const nf = new Intl.NumberFormat("pt-BR");
+const fmtDay = (iso: string) => iso.split("-").reverse().join("/");
 
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -50,7 +51,7 @@ export default function DashboardPage() {
       ) : (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <Card label="Estoque atual" value={nf.format(data.stockTotal)} hint="volumes disponíveis" icon={Boxes} href="/estoque" />
+            <Card label="Estoque produção" value={nf.format(data.stockTotal)} hint="volumes disponíveis" icon={Boxes} href="/estoque" />
             <Card label="Prontas" value={data.loadsReady} tone={data.loadsReady ? "good" : undefined} hint="cargas para expedir" icon={CheckCircle2} href="/cargas?status=READY" />
             <Card label="Pendentes" value={data.loadsPending} tone={data.loadsPending ? "warn" : undefined} hint="cargas incompletas" icon={Truck} href="/cargas?status=PENDING" />
             <Card label="Expedidas hoje" value={data.loadsDispatchedToday} hint="cargas" icon={PackageCheck} href="/expedicoes" />
@@ -75,6 +76,36 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {data.openProgrammings.length > 0 && (
+            <Panel
+              title="Programações abertas"
+              actions={<Link href="/programacoes" className="text-sm font-semibold text-orange-700 hover:underline">Ver programações</Link>}
+            >
+              <ul className="divide-y divide-slate-100">
+                {data.openProgrammings.map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/programacoes/${p.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 hover:bg-slate-50 md:grid-cols-[11rem_minmax(0,1fr)_auto]">
+                      <span>
+                        <span className="block text-base font-bold tabular-nums">{fmtDay(p.scheduledDate)}</span>
+                        {p.name && <span className="block truncate text-xs text-slate-500">{p.name}</span>}
+                      </span>
+                      <span className="col-span-2 flex items-center gap-3 md:col-span-1 md:row-start-1 md:col-start-2">
+                        <ProgressBar value={p.progress} state={p.loadCount && p.readyCount + p.dispatchedCount === p.loadCount ? "READY" : "PENDING"} />
+                        <span className="whitespace-nowrap text-sm tabular-nums text-slate-600">
+                          {nf.format(p.coveredVolumes)} de {nf.format(p.requiredVolumes)} vol.
+                        </span>
+                      </span>
+                      <span className="row-start-1 text-right text-sm md:col-start-3">
+                        <b className={p.readyCount ? "text-green-700" : "text-slate-700"}>{p.readyCount}</b>
+                        <span className="text-slate-500"> de {p.loadCount - p.dispatchedCount} prontas</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
           )}
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

@@ -38,11 +38,15 @@ class LoadSummaryOut(ApiModel):
     # PENDING | READY | DISPATCHED (READY is computed from current stock)
     status: str
     needs_review: bool
+    # PREVISTO / COBERTO (= available_volumes, kept for compatibility) / DISPONÍVEL (shared stock) / FALTA
     required_volumes: int
     available_volumes: int
+    covered_volumes: int = 0
+    stock_volumes: int = 0
     missing_volumes: int
     progress: int
     product_lines: int
+    programming_id: uuid.UUID | None = None
     invoice_count: int = 0
     customer_count: int = 0
     warning_invoices: int = 0
@@ -195,3 +199,21 @@ class ProgrammingOut(ApiModel):
     dispatched_count: int = 0
     volumes_registered: int = 0
     warning_invoices: int = 0
+    # Loads still to dispatch: PREVISTO / COBERTO / FALTA and coverage %
+    required_volumes: int = 0
+    covered_volumes: int = 0
+    missing_volumes: int = 0
+    progress: int = 0
+    stock_volumes: int = 0
+
+
+class ProductCoverageOut(ApiModel):
+    product_code: str | None
+    description: str
+    required: int
+    covered: int
+    stock: int
+    missing: int
+    dispatched: int
+    open_loads: int
+    needs_review: bool

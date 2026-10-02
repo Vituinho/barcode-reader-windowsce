@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, lazyload
 
 from app.core.errors import Conflict, DomainError, NotFound
 from app.core.timeutil import local_day_start_utc, utcnow
-from app.models import InventoryBalance, InventoryMovement, Invoice, InvoiceItem, Load, LoadItem
+from app.models import InventoryBalance, InventoryMovement, Invoice, InvoiceItem, Load, LoadItem, LoadProgramming
 from app.repositories.repos import AuditRepo
 from app.services import inventory_service
 from app.services.auth_service import AuthContext
@@ -55,6 +55,11 @@ class LoadView:
         if self.load.status == Load.STATUS_DISPATCHED:
             return self.required_total
         return sum(r.available for r in self.requirements)
+
+    @property
+    def stock_total(self) -> int:
+        """DISPONÍVEL: production stock of the programming for this load's products (shared with other loads)."""
+        return sum(r.stock for r in self.requirements)
 
     @property
     def missing_total(self) -> int:
@@ -166,6 +171,60 @@ def newly_ready_count(db: Session, product_id: uuid.UUID, stock_after: int,
     return len(newly_ready_loads(db, product_id, stock_after, programming_id))
 
 
+@dataclass
+class ProductCoverage:
+    product_id: uuid.UUID
+    product_code: str | None
+    description: str
+    required: int = 0  # PREVISTO: volumes required by the programming's loads still to dispatch
+    stock: int = 0  # DISPONÍVEL: current production stock of the programming
+    dispatched: int = 0  # volumes already dispatched in this programming's loads
+    open_loads: int = 0
+    needs_review: bool = False
+
+    @property
+    def covered(self) -> int:  # COBERTO
+        return min(self.required, self.stock)
+
+    @property
+    def missing(self) -> int:  # FALTA
+        return max(0, self.required - self.stock)
+
+
+def product_coverage(db: Session, programming_id: uuid.UUID) -> list[ProductCoverage]:
+    """Per product of the programming: PREVISTO / COBERTO / DISPONÍVEL / FALTA (stock is shared by all its loads)."""
+    rows: dict[uuid.UUID, ProductCoverage] = {}
+    for view in list_views(db, programming_id=programming_id, limit=5000):
+        dispatched = view.load.status == Load.STATUS_DISPATCHED
+        for r in view.requirements:
+            product = r.item.product
+            pc = rows.setdefault(product.id, ProductCoverage(product.id, product.sku, product.name, stock=r.stock))
+            if dispatched:
+                pc.dispatched += r.required or 0
+                continue
+            pc.open_loads += 1
+            pc.required += r.required or 0
+            pc.needs_review = pc.needs_review or r.required is None
+    return sorted(rows.values(), key=lambda p: (p.missing == 0, -p.missing, p.product_code or ""))
+
+
+def programming_totals(views: list[LoadView]) -> dict:
+    """Coverage of the loads still to dispatch: PREVISTO / COBERTO / FALTA in volumes and progress %.
+    Aggregated per product (min(total required, stock)) so stock shared by several loads is counted once."""
+    required_by_product: dict[uuid.UUID, int] = {}
+    stock_by_product: dict[uuid.UUID, int] = {}
+    for v in views:
+        if v.load.status == Load.STATUS_DISPATCHED:
+            continue
+        for r in v.requirements:
+            required_by_product[r.item.product_id] = required_by_product.get(r.item.product_id, 0) + (r.required or 0)
+            stock_by_product[r.item.product_id] = r.stock
+    required = sum(required_by_product.values())
+    covered = sum(min(q, stock_by_product[p]) for p, q in required_by_product.items())
+    return {"required_volumes": required, "covered_volumes": covered, "missing_volumes": required - covered,
+            "progress": int(covered * 100 / required) if required else 0}
+
+
 def dashboard_counts(db: Session) -> dict:
     open_views = list_views(db)
     open_views = [v for v in open_views if v.load.status != Load.STATUS_DISPATCHED]
@@ -181,7 +240,22 @@ def dashboard_counts(db: Session) -> dict:
         "loads_dispatched_today": dispatched_today,
         "ready_loads": [{"id": v.load.id, "external_code": v.load.external_code, "volumes": v.required_total}
                         for v in ready[:20]],
+        "open_programmings": open_programming_kpis(db),
     }
+
+
+def open_programming_kpis(db: Session) -> list[dict]:
+    programmings = db.scalars(select(LoadProgramming).where(LoadProgramming.status == LoadProgramming.STATUS_OPEN)
+                              .order_by(LoadProgramming.scheduled_date).limit(10)).all()
+    out = []
+    for p in programmings:
+        views = list_views(db, programming_id=p.id, limit=5000)
+        out.append(dict(
+            id=p.id, scheduled_date=p.scheduled_date, name=p.name, load_count=len(views),
+            ready_count=sum(1 for v in views if v.status == Load.STATUS_READY),
+            dispatched_count=sum(1 for v in views if v.status == Load.STATUS_DISPATCHED),
+            **programming_totals(views)))
+    return out
 
 
 def resolve_item(db: Session, load_id: uuid.UUID, item_id: uuid.UUID, required: int, note: str | None,

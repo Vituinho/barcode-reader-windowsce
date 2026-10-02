@@ -141,3 +141,58 @@ def test_reset_keeps_blocklist_and_removes_programmings(client, seed, op_headers
     db.expire_all()
     assert db.scalar(select(func.count()).select_from(LoadProgramming)) == 0
     assert db.scalar(select(func.count()).select_from(BlockedBarcode)) == 1
+
+
+# ---- coverage / readiness -----------------------------------------------------------------------------------
+
+def test_programming_stock_covers_any_load_and_reports_coverage(client, seed, op_headers, admin_headers, db):
+    pid = new_programming(client, admin_headers)
+    import_into(client, admin_headers, pid,
+                ("a.xml", nfe(load="231322", lines=(("1040421012", "COLCHAO", EAN, "UN", "2.0000"),
+                                                    ("6050647134", "BASE", "SEM GTIN", "UN", "1.0000")))),
+                ("b.xml", nfe(load="231331", lines=(("1040421012", "COLCHAO", EAN, "UN", "1.0000"),))))
+    # label printed for load 231322 may serve load 231331: the load number inside the code is ignored
+    body = pscan(client, seed, op_headers, pid, "10404210122313220003")
+    assert body["readyLoadCodes"] == ["231331"]
+    loads = {l["externalCode"]: l for l in client.get(f"/api/loads?programmingId={pid}", headers=op_headers).json()}
+    a, b = loads["231322"], loads["231331"]
+    assert (a["requiredVolumes"], a["coveredVolumes"], a["stockVolumes"], a["missingVolumes"]) == (3, 1, 1, 2)
+    assert b["status"] == "READY" and b["coveredVolumes"] == 1 and b["progress"] == 100
+    products = {p["productCode"]: p for p in client.get(f"/api/programmings/{pid}/products", headers=op_headers).json()}
+    p = products["1040421012"]
+    assert (p["required"], p["covered"], p["stock"], p["missing"], p["openLoads"]) == (3, 1, 1, 2, 2)
+    prog = client.get(f"/api/programmings/{pid}", headers=op_headers).json()
+    # shared stock counted once: 1 unit of 1040421012 covers 1 of the 3 required across both loads
+    assert (prog["requiredVolumes"], prog["coveredVolumes"], prog["missingVolumes"], prog["progress"]) == (4, 1, 3, 25)
+    assert prog["readyCount"] == 1 and prog["stockVolumes"] == 1 and prog["volumesRegistered"] == 1
+    dash = client.get("/api/admin/dashboard", headers=admin_headers).json()
+    assert dash["openProgrammings"][0]["id"] == pid and dash["openProgrammings"][0]["readyCount"] == 1
+
+
+def test_other_programming_stock_never_covers(client, seed, op_headers, admin_headers, db):
+    p1 = setup_programming(client, admin_headers, load="231322")
+    p2 = new_programming(client, admin_headers, day="2026-10-03")
+    import_into(client, admin_headers, p2, ("b.xml", nfe(load="231400", lines=BASE_LINES)))
+    pscan(client, seed, op_headers, p1, BIG)
+    pscan(client, seed, op_headers, p1, BIG[:-1] + "4", i=2)
+    loads = {l["externalCode"]: l for l in client.get("/api/loads", headers=op_headers).json()}
+    assert loads["231322"]["status"] == "READY"
+    assert loads["231400"]["status"] == "PENDING" and loads["231400"]["stockVolumes"] == 0
+
+
+def test_dispatch_consumes_programming_stock_and_recalculates(client, seed, op_headers, admin_headers, db):
+    pid = new_programming(client, admin_headers)
+    import_into(client, admin_headers, pid,
+                ("a.xml", nfe(load="231322", lines=(("1040421012", "COLCHAO", EAN, "UN", "2.0000"),))),
+                ("b.xml", nfe(load="231331", lines=(("1040421012", "COLCHAO", EAN, "UN", "2.0000"),))))
+    for i in range(2):
+        pscan(client, seed, op_headers, pid, f"104042101223132200{i:02d}", i=i + 1)
+    loads = {l["externalCode"]: l for l in client.get(f"/api/loads?programmingId={pid}", headers=op_headers).json()}
+    assert loads["231322"]["status"] == loads["231331"]["status"] == "READY"
+    r = client.post(f"/api/loads/{loads['231322']['id']}/dispatch", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert balance(db, "1040421012", pid) == 0
+    after = client.get(f"/api/loads/{loads['231331']['id']}", headers=op_headers).json()
+    assert after["status"] == "PENDING" and after["missingVolumes"] == 2
+    p = client.get(f"/api/programmings/{pid}/products", headers=op_headers).json()[0]
+    assert (p["required"], p["dispatched"], p["stock"]) == (2, 2, 0)
