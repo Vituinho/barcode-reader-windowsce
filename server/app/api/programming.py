@@ -60,11 +60,12 @@ def close_programming(programming_id: uuid.UUID, db: Session = Depends(get_db), 
 @router.get("/{programming_id}/scan-rules")
 def scan_rules(programming_id: uuid.UUID, db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):
     """Lets the collector give instant feedback offline. The server still classifies every synced scan."""
-    from app.services import barcode_rules
+    from app.services import barcode_rules, blocklist_service
 
     programming_service.get(db, programming_id)
     return {"productCodes": sorted(barcode_rules.programming_product_codes(db, programming_id)),
-            "eans": sorted(barcode_rules.known_eans(db))}
+            "eans": sorted(barcode_rules.known_eans(db)),
+            "blocked": blocklist_service.active_values(db)}
 
 
 @router.post("/{programming_id}/reopen", response_model=ProgrammingOut)

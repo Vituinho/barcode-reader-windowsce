@@ -2,7 +2,7 @@
 
 Removes load programmings, loads, invoices, invoice lines, load requirements, dispatches, stock (movements + balances), scans,
 barcode records seen by scans, and products created by XML imports. Keeps users, devices, collection
-sessions, software releases, audit log, and products that existed before any XML referenced them
+sessions, software releases, blocked barcodes, audit log, and products that existed before any XML referenced them
 (seed/manual catalog). One transaction; tables are locked against concurrent writes during the reset.
 Can be disabled with ALLOW_OPERATIONAL_RESET=false.
 """

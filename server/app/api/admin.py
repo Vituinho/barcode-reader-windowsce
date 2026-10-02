@@ -9,12 +9,12 @@ from app.api.deps import admin_auth
 from app.core.database import get_db
 from app.core.timeutil import device_time_to_utc, utcnow
 from app.repositories.repos import ScanFilter
-from app.schemas.admin import (BarcodeAssign, BarcodeOut, DashboardOut, DeviceCreate, DeviceOut, DeviceUpdate,
+from app.schemas.admin import (BarcodeAssign, BarcodeOut, BlockedBarcodeIn, BlockedBarcodeOut, BlockedBarcodeUpdate, DashboardOut, DeviceCreate, DeviceOut, DeviceUpdate,
                                ItemCreate, ItemOut, ItemUpdate, ScanOut, ScanPage, ScanResolve, SessionAdminOut,
                                SessionCreate, UserCreate, UserOut, UserUpdate)
 from app.core.config import get_settings
 from app.schemas.common import ApiModel
-from app.services import admin_service, catalog_service, device_service, maintenance_service
+from app.services import admin_service, blocklist_service, catalog_service, device_service, maintenance_service
 from app.services.auth_service import AuthContext
 
 router = APIRouter(prefix="/api/admin")
@@ -149,6 +149,23 @@ def create_user(data: UserCreate, db: Session = Depends(get_db), auth: AuthConte
 def update_user(user_id: uuid.UUID, data: UserUpdate, db: Session = Depends(get_db),
                 auth: AuthContext = Depends(admin_auth)):
     return admin_service.update_user(db, user_id, data, auth)
+
+
+# ---- blocked barcodes (configuration) ----
+@router.get("/blocked-barcodes", response_model=list[BlockedBarcodeOut])
+def blocked_barcodes(db: Session = Depends(get_db), _: AuthContext = Depends(admin_auth)):
+    return blocklist_service.list_all(db)
+
+
+@router.post("/blocked-barcodes", response_model=BlockedBarcodeOut)
+def block_barcode(data: BlockedBarcodeIn, db: Session = Depends(get_db), auth: AuthContext = Depends(admin_auth)):
+    return blocklist_service.create(db, data.value, data.reason, auth)
+
+
+@router.patch("/blocked-barcodes/{entry_id}", response_model=BlockedBarcodeOut)
+def update_blocked_barcode(entry_id: uuid.UUID, data: BlockedBarcodeUpdate, db: Session = Depends(get_db),
+                           auth: AuthContext = Depends(admin_auth)):
+    return blocklist_service.set_active(db, entry_id, data.active, auth)
 
 
 # ---- maintenance (homologation tool) ----

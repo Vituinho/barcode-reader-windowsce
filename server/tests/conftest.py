@@ -42,7 +42,7 @@ def schema():
 @pytest.fixture(autouse=True)
 def clean_db(schema):
     with get_engine().begin() as conn:
-        conn.execute(text("TRUNCATE inventory_movements, inventory_balances, load_items, invoice_items, invoices, loads, load_programmings, scans, barcodes, items, audit_logs, collection_sessions, devices, users, software_releases CASCADE"))
+        conn.execute(text("TRUNCATE inventory_movements, inventory_balances, load_items, invoice_items, invoices, loads, load_programmings, blocked_barcodes, scans, barcodes, items, audit_logs, collection_sessions, devices, users, software_releases CASCADE"))
     yield
 
 

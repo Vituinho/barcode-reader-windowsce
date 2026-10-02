@@ -107,6 +107,7 @@ export default function ScansPage() {
           <option value="CONFLICT">CONFLITOS (sessão/programação fechada ou inexistente)</option>
           <option value="WRONG_BARCODE">CÓDIGO INCORRETO (EAN)</option>
           <option value="NOT_IN_PROGRAM">FORA DA PROGRAMAÇÃO</option>
+          <option value="BLOCKED">CÓDIGO BLOQUEADO</option>
           <option value="REJECTED">REJECTED</option>
         </select>
         <input className={inputCls} placeholder="Código contém" value={filters.barcode} onChange={set("barcode")} />

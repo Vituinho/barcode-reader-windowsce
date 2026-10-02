@@ -208,7 +208,7 @@ def dashboard(db: Session) -> DashboardOut:
         unknown_scans_today=db.scalar(today.where(Scan.result == Scan.RESULT_UNKNOWN)) or 0,
         unknown_barcodes=db.scalar(select(func.count(func.distinct(Scan.product_code))).where(
             Scan.result == Scan.RESULT_UNKNOWN, Scan.product_code.is_not(None),
-            Scan.sync_state != Scan.STATE_WRONG_BARCODE,
+            Scan.sync_state.not_in((Scan.STATE_WRONG_BARCODE, Scan.STATE_BLOCKED)),
             ~select(Item.id).where(Item.sku == Scan.product_code).exists())) or 0,
         conflicts_open=db.scalar(select(func.count()).select_from(Scan)
                                  .where(Scan.sync_state.in_(Scan.CONFLICT_STATES))) or 0,
@@ -223,9 +223,9 @@ def dashboard(db: Session) -> DashboardOut:
 def unknown_codes(db: Session, q: str | None = None, limit: int = 500) -> list[dict]:
     """Scanned product codes (first 10 chars) that match no product, grouped with their occurrences."""
     still_unknown = ~select(Item.id).where(Item.sku == Scan.product_code).exists()
-    # EAN / wrong-code readings are not product codes to register
+    # EAN / wrong-code / blocked readings are not product codes to register
     base = [Scan.result == Scan.RESULT_UNKNOWN, Scan.product_code.is_not(None), still_unknown,
-            Scan.sync_state != Scan.STATE_WRONG_BARCODE]
+            Scan.sync_state.not_in((Scan.STATE_WRONG_BARCODE, Scan.STATE_BLOCKED))]
     if q:
         base.append(Scan.product_code.ilike(f"%{q.strip()}%"))
     groups = db.execute(

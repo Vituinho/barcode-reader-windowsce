@@ -294,6 +294,12 @@ describe("production programming collection", () => {
     assert.equal(stored.currentStock, null);
   });
 
+  it("blocked value -> CÓDIGO BLOQUEADO prediction, even for a programming product", () => {
+    const withBlock = { ...rules, blocked: ["10404210122313220003"] };
+    assert.equal(predictResult("10404210122313220003", withBlock), "BLOCKED");
+    assert.equal(predictResult("10404210122313220004", withBlock), null);
+  });
+
   it("product outside the programming -> NOT_IN_PROGRAM prediction", () => {
     assert.equal(predictResult("60506471342313480002", rules), "NOT_IN_PROGRAM");
     assert.equal(predictResult("60506471342313480002", null), null); // no rules cached: server decides
@@ -321,6 +327,6 @@ describe("production programming collection", () => {
     saveRules(storage, "p1", rules);
     saveRules(storage, "p2", { productCodes: [], eans: [] });
     assert.equal(loadRules(storage, "p1"), null); // only the selected programming is kept
-    assert.deepEqual(loadRules(storage, "p2"), { productCodes: [], eans: [] });
+    assert.deepEqual(loadRules(storage, "p2"), { productCodes: [], eans: [], blocked: [] });
   });
 });

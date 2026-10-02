@@ -57,7 +57,7 @@ class ScanIn(ApiModel):
 class ScanResult(ApiModel):
     accepted: bool
     # KNOWN | UNKNOWN | DUPLICATE | SESSION_CLOSED | SESSION_NOT_FOUND | REJECTED | ERROR
-    # programming scans: WRONG_BARCODE | NOT_IN_PROGRAM | PROGRAMMING_CLOSED | PROGRAMMING_NOT_FOUND
+    # BLOCKED (blocklist); programming scans: WRONG_BARCODE | NOT_IN_PROGRAM | PROGRAMMING_CLOSED | PROGRAMMING_NOT_FOUND
     result: str
     client_scan_id: str
     server_scan_id: uuid.UUID | None = None

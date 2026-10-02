@@ -3,7 +3,7 @@
 import {
   AlertCircle, AlertTriangle, Barcode, Boxes, CalendarRange, Check, CheckCircle2, CircleDashed, Clock, Download,
   FileUp, Inbox, LayoutDashboard, ListChecks, Loader2, LogOut, Menu, Package, PackageCheck, ScanLine, ScanSearch,
-  Search, Smartphone, Tag, Truck, Users, Wrench, X, XCircle, type LucideIcon,
+  Search, ShieldBan, Smartphone, Tag, Truck, Users, Wrench, X, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -53,8 +53,9 @@ const NAV: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: "Sistema",
+    section: "Configurações",
     items: [
+      { href: "/settings/blocked", label: "Códigos bloqueados", icon: ShieldBan },
       { href: "/downloads", label: "Instalação", icon: Download },
       { href: "/settings/releases", label: "Versões", icon: Tag },
       { href: "/settings/maintenance", label: "Manutenção", icon: Wrench },
@@ -383,6 +384,7 @@ const STATUS: Record<string, [string, Tone]> = {
   PROGRAMMING_NOT_FOUND: ["PROGRAMAÇÃO INEXISTENTE", "review"],
   WRONG_BARCODE: ["CÓDIGO INCORRETO", "danger"],
   NOT_IN_PROGRAM: ["FORA DA PROGRAMAÇÃO", "warning"],
+  BLOCKED: ["CÓDIGO BLOQUEADO", "danger"],
   SCAN_IN: ["ENTRADA", "success"],
   DISPATCH_OUT: ["EXPEDIÇÃO", "neutral"],
   ADJUSTMENT_IN: ["AJUSTE +", "info"],

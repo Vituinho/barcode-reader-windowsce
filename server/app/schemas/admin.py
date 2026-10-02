@@ -173,3 +173,21 @@ class DashboardOut(ApiModel):
     loads_dispatched_today: int = 0
     ready_loads: list[ReadyLoad] = []
     server_time: datetime
+
+
+class BlockedBarcodeOut(ApiModel):
+    id: uuid.UUID
+    value: str
+    reason: str | None = None
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class BlockedBarcodeIn(ApiModel):
+    value: str = Field(min_length=1, max_length=512)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class BlockedBarcodeUpdate(ApiModel):
+    active: bool

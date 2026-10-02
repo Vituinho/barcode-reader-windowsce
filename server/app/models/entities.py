@@ -120,6 +120,7 @@ class Scan(Base):
     # Final production-rule refusals: stored for audit, never add stock, not resolvable into stock
     STATE_WRONG_BARCODE = "WRONG_BARCODE"  # EAN / small label code instead of the large production code
     STATE_NOT_IN_PROGRAM = "NOT_IN_PROGRAM"  # product not required by the selected programming
+    STATE_BLOCKED = "BLOCKED"  # value on the admin blocklist
     CONFLICT_STATES = (STATE_SESSION_CLOSED, STATE_SESSION_NOT_FOUND, STATE_PROGRAMMING_CLOSED,
                        STATE_PROGRAMMING_NOT_FOUND)
 
@@ -204,6 +205,23 @@ class SoftwareRelease(Base):
         # At most one current (active) release per platform.
         Index("uq_software_releases_active_platform", "platform", unique=True,
               postgresql_where=text("active")),
+    )
+
+
+class BlockedBarcode(Base):
+    """Exact barcode values an admin forbids for collection (e.g. labels known to be wrong). A blocked reading is
+    stored for audit as BLOCKED and never adds stock. Configuration: survives the operational reset."""
+
+    __tablename__ = "blocked_barcodes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    value: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 

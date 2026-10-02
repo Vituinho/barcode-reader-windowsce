@@ -8,6 +8,7 @@ Rules (in order):
 4. Session closed / missing -> stored as a conflict for administrative resolution (no stock until accepted).
 5. Same device+operator+session+barcode within the duplicate window -> stored as DUPLICATE (no stock).
 6. Otherwise a known product scan adds +1 stock (SCAN_IN) in the same transaction as the scan row.
+A value on the admin blocklist is stored as BLOCKED (any collector) and adds no stock.
 Programming scans (web collector) first apply the production barcode rules (barcode_rules): EAN / wrong code and
 products outside the programming are stored for audit as WRONG_BARCODE / NOT_IN_PROGRAM and add no stock.
 """
@@ -22,7 +23,7 @@ from app.core.timeutil import device_time_to_utc, utcnow
 from app.models import Barcode, CollectionSession, Device, InventoryMovement, LoadProgramming, Scan
 from app.repositories.repos import BarcodeRepo, DeviceRepo, ScanRepo, SessionRepo, UserRepo
 from app.schemas.collector import ScanIn, ScanResult
-from app.services import barcode_rules, inventory_service, load_service
+from app.services import barcode_rules, blocklist_service, inventory_service, load_service
 from app.services.auth_service import AuthContext
 
 
@@ -133,7 +134,9 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
         programming_id = programming.id if programming else None
 
         rule_state = None
-        if payload.programming_id:
+        if blocklist_service.is_blocked(db, payload.barcode):
+            rule_state = Scan.STATE_BLOCKED
+        elif payload.programming_id:
             # Before the closed-programming conflict: a refused code must never be accepted into stock later.
             rule_state = barcode_rules.classify(
                 db, payload.barcode, product,

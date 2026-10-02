@@ -29,7 +29,7 @@ type Display =
   | { kind: "collected"; code: string; name: string | null; stock: number | null; ready: number | null; readyCodes: string[] }
   | { kind: "unknown"; code: string }
   | { kind: "conflict"; code: string; reason: string | null }
-  | { kind: "wrong_barcode"; raw: string }
+  | { kind: "wrong_barcode" | "blocked"; raw: string }
   | { kind: "not_in_program"; code: string }
   | { kind: "duplicate"; code: string }
   | { kind: "invalid"; raw: string }
@@ -58,6 +58,7 @@ const CONNECTION: Record<Connection, { label: string; cls: string; Icon: typeof 
 function displayFromScan(scan: QueuedScan): Display {
   if (scan.status === "REJECTED") return { kind: "rejected", code: scan.productCode, message: scan.lastError ?? "Recusado" };
   if (scan.status === "CONFLICT") return { kind: "conflict", code: scan.productCode, reason: scan.result };
+  if (scan.result === "BLOCKED") return { kind: "blocked", raw: scan.rawBarcode.trim() };
   if (scan.result === "WRONG_BARCODE") return { kind: "wrong_barcode", raw: scan.rawBarcode.trim() };
   if (scan.result === "NOT_IN_PROGRAM") return { kind: "not_in_program", code: scan.productCode };
   if (scan.result === "UNKNOWN") return { kind: "unknown", code: scan.productCode };
@@ -70,6 +71,7 @@ function rowStatus(scan: QueuedScan): { label: string; cls: string } {
   if (scan.status === "PENDING") return { label: "PENDENTE", cls: "text-sky-800 bg-sky-50 ring-sky-200" };
   if (scan.status === "REJECTED") return { label: "ERRO", cls: "text-red-800 bg-red-50 ring-red-200" };
   if (scan.status === "CONFLICT") return { label: "EM REVISÃO", cls: "text-purple-800 bg-purple-50 ring-purple-200" };
+  if (scan.result === "BLOCKED") return { label: "BLOQUEADO", cls: "text-red-800 bg-red-50 ring-red-200" };
   if (scan.result === "WRONG_BARCODE") return { label: "CÓD. INCORRETO", cls: "text-red-800 bg-red-50 ring-red-200" };
   if (scan.result === "NOT_IN_PROGRAM") return { label: "FORA DA PROGRAMAÇÃO", cls: "text-amber-900 bg-amber-50 ring-amber-200" };
   if (scan.result === "UNKNOWN") return { label: "NÃO ENCONTRADO", cls: "text-amber-900 bg-amber-50 ring-amber-200" };
@@ -297,7 +299,10 @@ export default function ColetaPage() {
       const online = ["ONLINE", "UNKNOWN", "SYNCING"].includes(connectionRef.current);
       // Saved and sent for audit either way; a code the rules refuse is flagged at once (the server confirms).
       const predicted = predictResult(outcome.scan.rawBarcode, rulesRef.current);
-      if (predicted === "WRONG_BARCODE") {
+      if (predicted === "BLOCKED") {
+        setDisplay({ kind: "blocked", raw: outcome.scan.rawBarcode.trim() });
+        feedback("error");
+      } else if (predicted === "WRONG_BARCODE") {
         setDisplay({ kind: "wrong_barcode", raw: outcome.scan.rawBarcode.trim() });
         feedback("error");
       } else if (predicted === "NOT_IN_PROGRAM") {
@@ -694,6 +699,8 @@ function cameraStatus(d: Display): { label: string; tone: "ok" | "warn" | "bad" 
       return { label: `COLETADO · ${d.code}${d.stock !== null ? ` · ESTOQUE ${d.stock}` : ""}${d.readyCodes.length ? ` · CARGA PRONTA ${d.readyCodes.join(", ")}` : ""}`, tone: "ok" };
     case "unknown":
       return { label: `NÃO ENCONTRADO · ${d.code}`, tone: "warn" };
+    case "blocked":
+      return { label: "CÓDIGO BLOQUEADO", tone: "bad" };
     case "wrong_barcode":
       return { label: "CÓDIGO INCORRETO · LEIA O CÓDIGO MAIOR", tone: "bad" };
     case "not_in_program":
@@ -837,6 +844,16 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
           <div className="text-[clamp(1.25rem,5vw,2rem)] font-black tracking-wide">LEIA O CÓDIGO MAIOR</div>
           <p className="max-w-md text-base text-red-100">Leia o código de barras maior da etiqueta de produção. Este código não entra no estoque.</p>
           <div className="font-mono text-xl break-all text-red-100">{display.raw}</div>
+        </>
+      );
+      break;
+    case "blocked":
+      cls = "bg-red-800 text-white";
+      body = (
+        <>
+          <div className={`${big} flex items-center gap-3`}><CircleSlash className="size-[0.85em]" strokeWidth={3} aria-hidden /> CÓDIGO BLOQUEADO</div>
+          <div className="font-mono text-2xl break-all">{display.raw}</div>
+          <p className="max-w-md text-base text-red-100">Este código foi bloqueado pelo administrador. A leitura foi registrada e não entra no estoque.</p>
         </>
       );
       break;

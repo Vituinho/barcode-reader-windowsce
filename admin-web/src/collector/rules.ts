@@ -8,9 +8,11 @@ import { normalizeProductCode } from "./barcode.ts";
 export interface ScanRules {
   productCodes: string[];
   eans: string[];
+  /** Admin blocklist (exact values). */
+  blocked?: string[];
 }
 
-export type PredictedResult = "WRONG_BARCODE" | "NOT_IN_PROGRAM" | null;
+export type PredictedResult = "BLOCKED" | "WRONG_BARCODE" | "NOT_IN_PROGRAM" | null;
 
 const RULES_PREFIX = "givova.coleta.rules.";
 
@@ -27,6 +29,7 @@ export function isGtin(value: string): boolean {
 export function predictResult(raw: string, rules: ScanRules | null): PredictedResult {
   if (!rules) return null;
   const value = raw.trim();
+  if (rules.blocked?.includes(value)) return "BLOCKED";
   if (rules.eans.includes(value)) return "WRONG_BARCODE";
   const code = normalizeProductCode(value);
   if (code !== null && rules.productCodes.includes(code)) return null;
@@ -49,7 +52,7 @@ export function saveRules(storage: Storage, programmingId: string, rules: ScanRu
       const key = storage.key(i);
       if (key?.startsWith(RULES_PREFIX) && key !== RULES_PREFIX + programmingId) storage.removeItem(key);
     }
-    storage.setItem(RULES_PREFIX + programmingId, JSON.stringify({ productCodes: rules.productCodes, eans: rules.eans }));
+    storage.setItem(RULES_PREFIX + programmingId, JSON.stringify({ productCodes: rules.productCodes, eans: rules.eans, blocked: rules.blocked ?? [] }));
   } catch {
     /* storage full / blocked: predictions simply stay off */
   }
