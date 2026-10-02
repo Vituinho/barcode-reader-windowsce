@@ -104,7 +104,9 @@ export default function ScansPage() {
           <option value="">Todos estados</option>
           <option value="ACCEPTED">ACCEPTED</option>
           <option value="DUPLICATE">DUPLICATE</option>
-          <option value="CONFLICT">CONFLITOS (sessão fechada/inexistente)</option>
+          <option value="CONFLICT">CONFLITOS (sessão/programação fechada ou inexistente)</option>
+          <option value="WRONG_BARCODE">CÓDIGO INCORRETO (EAN)</option>
+          <option value="NOT_IN_PROGRAM">FORA DA PROGRAMAÇÃO</option>
           <option value="REJECTED">REJECTED</option>
         </select>
         <input className={inputCls} placeholder="Código contém" value={filters.barcode} onChange={set("barcode")} />
@@ -127,7 +129,7 @@ export default function ScansPage() {
             <Td>{s.operatorName ?? "—"}</Td>
             <Td>{s.sessionName ?? s.requestedSessionId ?? "—"}</Td>
             <Td>
-              {(s.syncState === "SESSION_CLOSED" || s.syncState === "SESSION_NOT_FOUND") && (
+              {["SESSION_CLOSED", "SESSION_NOT_FOUND", "PROGRAMMING_CLOSED", "PROGRAMMING_NOT_FOUND"].includes(s.syncState) && (
                 <div className="flex gap-1">
                   <Btn variant="secondary" onClick={() => resolve(s, "ACCEPT")}>Aceitar</Btn>
                   <Btn variant="danger" onClick={() => resolve(s, "REJECT")}>Rejeitar</Btn>

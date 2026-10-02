@@ -117,6 +117,9 @@ class Scan(Base):
     # Programming-scoped production scans
     STATE_PROGRAMMING_CLOSED = "PROGRAMMING_CLOSED"  # synced after the programming was closed: review
     STATE_PROGRAMMING_NOT_FOUND = "PROGRAMMING_NOT_FOUND"
+    # Final production-rule refusals: stored for audit, never add stock, not resolvable into stock
+    STATE_WRONG_BARCODE = "WRONG_BARCODE"  # EAN / small label code instead of the large production code
+    STATE_NOT_IN_PROGRAM = "NOT_IN_PROGRAM"  # product not required by the selected programming
     CONFLICT_STATES = (STATE_SESSION_CLOSED, STATE_SESSION_NOT_FOUND, STATE_PROGRAMMING_CLOSED,
                        STATE_PROGRAMMING_NOT_FOUND)
 

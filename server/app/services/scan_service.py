@@ -8,6 +8,8 @@ Rules (in order):
 4. Session closed / missing -> stored as a conflict for administrative resolution (no stock until accepted).
 5. Same device+operator+session+barcode within the duplicate window -> stored as DUPLICATE (no stock).
 6. Otherwise a known product scan adds +1 stock (SCAN_IN) in the same transaction as the scan row.
+Programming scans (web collector) first apply the production barcode rules (barcode_rules): EAN / wrong code and
+products outside the programming are stored for audit as WRONG_BARCODE / NOT_IN_PROGRAM and add no stock.
 """
 import uuid
 
@@ -20,7 +22,7 @@ from app.core.timeutil import device_time_to_utc, utcnow
 from app.models import Barcode, CollectionSession, Device, InventoryMovement, LoadProgramming, Scan
 from app.repositories.repos import BarcodeRepo, DeviceRepo, ScanRepo, SessionRepo, UserRepo
 from app.schemas.collector import ScanIn, ScanResult
-from app.services import inventory_service, load_service
+from app.services import barcode_rules, inventory_service, load_service
 from app.services.auth_service import AuthContext
 
 
@@ -130,7 +132,14 @@ def submit_scan(db: Session, payload: ScanIn, auth: AuthContext) -> ScanResult:
         programming, programming_state = _resolve_programming(db, payload.programming_id)
         programming_id = programming.id if programming else None
 
-        state = programming_state or conflict_state or Scan.STATE_ACCEPTED
+        rule_state = None
+        if payload.programming_id:
+            # Before the closed-programming conflict: a refused code must never be accepted into stock later.
+            rule_state = barcode_rules.classify(
+                db, payload.barcode, product,
+                programming.id if programming is not None and programming_state != Scan.STATE_PROGRAMMING_NOT_FOUND
+                else None)
+        state = rule_state or programming_state or conflict_state or Scan.STATE_ACCEPTED
         if state == Scan.STATE_ACCEPTED:
             window = device.duplicate_window_seconds
             if window is None:

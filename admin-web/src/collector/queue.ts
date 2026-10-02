@@ -23,6 +23,8 @@ export interface QueuedScan {
   itemName: string | null;
   currentStock: number | null;
   newlyReadyLoads: number | null;
+  /** Codes of the loads that became ready with this scan (absent on records saved by older versions). */
+  readyLoadCodes?: string[] | null;
 }
 
 export interface ScanQueue {

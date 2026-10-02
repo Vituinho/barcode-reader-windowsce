@@ -14,6 +14,7 @@ import { submitReading, type PipelineContext } from "../src/collector/pipeline.t
 import { createMemoryQueue, type QueuedScan, type ScanQueue } from "../src/collector/queue.ts";
 import { createSyncEngine } from "../src/collector/sync.ts";
 import { createCameraDebounce } from "../src/collector/cameraDebounce.ts";
+import { isGtin, loadRules, predictResult, saveRules } from "../src/collector/rules.ts";
 
 const require = createRequire(import.meta.url);
 const { cachePolicy } = require("../public/sw-policy.js") as {
@@ -248,5 +249,78 @@ describe("camera, device identity, service worker, logout", () => {
     assert.equal(pendingLogoutMessage(0), null);
     assert.equal(pendingLogoutMessage(1), "Existe 1 leitura ainda não sincronizada.");
     assert.equal(pendingLogoutMessage(4), "Existem 4 leituras ainda não sincronizadas.");
+  });
+});
+
+describe("production programming collection", () => {
+  const rules = { productCodes: ["1040421012"], eans: ["7896988334632"] };
+
+  it("large production code -> product = first 10 chars, raw preserved, programmingId queued and sent", async () => {
+    const queue = createMemoryQueue();
+    const out = await submitReading("10404210122313220003", "KEYBOARD",
+                                    { ...ctx(queue), programmingId: "prog-1", requireProgramming: true });
+    assert.equal(out.kind, "queued");
+    const scan = (await queue.pending())[0];
+    assert.equal(scan.productCode, "1040421012");
+    assert.equal(scan.rawBarcode, "10404210122313220003");
+    assert.equal(scan.programmingId, "prog-1");
+    const api = fakeApi([{ status: 200, body: { accepted: true, result: "KNOWN", productCode: "1040421012",
+                                                  currentStock: 1, newlyReadyLoads: 1, readyLoadCodes: ["231322"] } }]);
+    await engine(queue, api).runOnce();
+    assert.equal(api.scans()[0].body?.programmingId, "prog-1");
+    assert.equal(api.scans()[0].body?.rawBarcode, "10404210122313220003");
+    const synced = (await queue.recent(1))[0];
+    assert.deepEqual(synced.readyLoadCodes, ["231322"]);
+    assert.equal(predictResult("10404210122313220003", rules), null);
+  });
+
+  it("no programming selected -> reading refused before queuing", async () => {
+    const queue = createMemoryQueue();
+    const out = await submitReading("10404210122313220003", "KEYBOARD", { ...ctx(queue), requireProgramming: true });
+    assert.equal(out.kind, "no_programming");
+    assert.equal(await queue.pendingCount(), 0);
+  });
+
+  it("EAN -> CÓDIGO INCORRETO prediction, still queued for audit; server answer is final (no stock)", async () => {
+    assert.equal(predictResult("7896988334632", rules), "WRONG_BARCODE");
+    assert.equal(predictResult("4006381333931", rules), "WRONG_BARCODE"); // any valid GTIN not in the programming
+    const queue = createMemoryQueue();
+    await submitReading("7896988334632", "CAMERA", { ...ctx(queue), programmingId: "prog-1", requireProgramming: true });
+    const api = fakeApi([{ status: 200, body: { accepted: true, result: "WRONG_BARCODE", productCode: "7896988334" } }]);
+    await engine(queue, api).runOnce();
+    const stored = (await queue.recent(1))[0];
+    assert.equal(stored.status, "SYNCED");
+    assert.equal(stored.result, "WRONG_BARCODE");
+    assert.equal(stored.currentStock, null);
+  });
+
+  it("product outside the programming -> NOT_IN_PROGRAM prediction", () => {
+    assert.equal(predictResult("60506471342313480002", rules), "NOT_IN_PROGRAM");
+    assert.equal(predictResult("60506471342313480002", null), null); // no rules cached: server decides
+  });
+
+  it("scan synced after its programming closed -> CONFLICT for review, programming kept", async () => {
+    const queue = createMemoryQueue();
+    await submitReading("10404210122313220003", "KEYBOARD", { ...ctx(queue), programmingId: "prog-old", requireProgramming: true });
+    await engine(queue, fakeApi([{ status: 200, body: { accepted: true, result: "PROGRAMMING_CLOSED" } }])).runOnce();
+    const stored = (await queue.recent(1))[0];
+    assert.equal(stored.status, "CONFLICT");
+    assert.equal(stored.programmingId, "prog-old");
+  });
+
+  it("GTIN check digit and rules cache", () => {
+    assert.ok(isGtin("7896988334632"));
+    assert.ok(!isGtin("7896988334633"));
+    assert.ok(!isGtin("10404210122313220003"));
+    const m = new Map<string, string>();
+    const storage = {
+      get length() { return m.size; }, key: (i: number) => [...m.keys()][i] ?? null,
+      getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k), clear: () => m.clear(),
+    } as Storage;
+    saveRules(storage, "p1", rules);
+    saveRules(storage, "p2", { productCodes: [], eans: [] });
+    assert.equal(loadRules(storage, "p1"), null); // only the selected programming is kept
+    assert.deepEqual(loadRules(storage, "p2"), { productCodes: [], eans: [] });
   });
 });

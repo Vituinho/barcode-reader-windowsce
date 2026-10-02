@@ -22,6 +22,7 @@ export interface ScanResponse {
   itemName?: string | null;
   currentStock?: number | null;
   newlyReadyLoads?: number | null;
+  readyLoadCodes?: string[] | null;
   replayed?: boolean;
 }
 
@@ -101,7 +102,7 @@ export interface EngineOptions {
   heartbeat?: () => { deviceId: string; operatorId: string | null } | null;
 }
 
-const CONFLICT_RESULTS = ["SESSION_CLOSED", "SESSION_NOT_FOUND"];
+const CONFLICT_RESULTS = ["SESSION_CLOSED", "SESSION_NOT_FOUND", "PROGRAMMING_CLOSED", "PROGRAMMING_NOT_FOUND"];
 
 export function createSyncEngine(opts: EngineOptions) {
   const fetchImpl: FetchLike = opts.fetchImpl ?? ((input, init) => fetch(input, init));
@@ -188,6 +189,7 @@ export function createSyncEngine(opts: EngineOptions) {
             itemName: r.body.itemName ?? null,
             currentStock: typeof r.body.currentStock === "number" ? r.body.currentStock : null,
             newlyReadyLoads: typeof r.body.newlyReadyLoads === "number" ? r.body.newlyReadyLoads : null,
+            readyLoadCodes: Array.isArray(r.body.readyLoadCodes) ? r.body.readyLoadCodes : null,
           };
           await opts.queue.put(updated);
           opts.onScanUpdated?.(updated);

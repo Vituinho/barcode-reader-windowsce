@@ -17,6 +17,7 @@ import { getDeviceIdentity, setDeviceName, type DeviceIdentity } from "@/collect
 import { submitReading } from "@/collector/pipeline";
 import { loadRememberedProgramming, programmingLabel, rememberProgramming, validateRemembered, type ProgrammingChoice } from "@/collector/programming";
 import { pendingLogoutMessage } from "@/collector/logout";
+import { loadRules, predictResult, saveRules, type ScanRules } from "@/collector/rules";
 import { openScanQueue } from "@/collector/store";
 import type { QueuedScan, ScanQueue } from "@/collector/queue";
 import { createSyncEngine, type Connection, type EngineState } from "@/collector/sync";
@@ -25,8 +26,11 @@ import { API_URL, api, getToken, getUser, setToken, type SessionUser } from "@/l
 type Display =
   | { kind: "idle" }
   | { kind: "sending" | "offline"; code: string }
-  | { kind: "collected"; code: string; name: string | null; stock: number | null; ready: number | null }
-  | { kind: "unknown" | "conflict"; code: string }
+  | { kind: "collected"; code: string; name: string | null; stock: number | null; ready: number | null; readyCodes: string[] }
+  | { kind: "unknown"; code: string }
+  | { kind: "conflict"; code: string; reason: string | null }
+  | { kind: "wrong_barcode"; raw: string }
+  | { kind: "not_in_program"; code: string }
   | { kind: "duplicate"; code: string }
   | { kind: "invalid"; raw: string }
   | { kind: "no_programming" }
@@ -53,16 +57,21 @@ const CONNECTION: Record<Connection, { label: string; cls: string; Icon: typeof 
 
 function displayFromScan(scan: QueuedScan): Display {
   if (scan.status === "REJECTED") return { kind: "rejected", code: scan.productCode, message: scan.lastError ?? "Recusado" };
-  if (scan.status === "CONFLICT") return { kind: "conflict", code: scan.productCode };
+  if (scan.status === "CONFLICT") return { kind: "conflict", code: scan.productCode, reason: scan.result };
+  if (scan.result === "WRONG_BARCODE") return { kind: "wrong_barcode", raw: scan.rawBarcode.trim() };
+  if (scan.result === "NOT_IN_PROGRAM") return { kind: "not_in_program", code: scan.productCode };
   if (scan.result === "UNKNOWN") return { kind: "unknown", code: scan.productCode };
   if (scan.result === "DUPLICATE") return { kind: "duplicate", code: scan.productCode };
-  return { kind: "collected", code: scan.productCode, name: scan.itemName, stock: scan.currentStock, ready: scan.newlyReadyLoads };
+  return { kind: "collected", code: scan.productCode, name: scan.itemName, stock: scan.currentStock,
+           ready: scan.newlyReadyLoads, readyCodes: scan.readyLoadCodes ?? [] };
 }
 
 function rowStatus(scan: QueuedScan): { label: string; cls: string } {
   if (scan.status === "PENDING") return { label: "PENDENTE", cls: "text-sky-800 bg-sky-50 ring-sky-200" };
   if (scan.status === "REJECTED") return { label: "ERRO", cls: "text-red-800 bg-red-50 ring-red-200" };
   if (scan.status === "CONFLICT") return { label: "EM REVISÃO", cls: "text-purple-800 bg-purple-50 ring-purple-200" };
+  if (scan.result === "WRONG_BARCODE") return { label: "CÓD. INCORRETO", cls: "text-red-800 bg-red-50 ring-red-200" };
+  if (scan.result === "NOT_IN_PROGRAM") return { label: "FORA DA PROGRAMAÇÃO", cls: "text-amber-900 bg-amber-50 ring-amber-200" };
   if (scan.result === "UNKNOWN") return { label: "NÃO ENCONTRADO", cls: "text-amber-900 bg-amber-50 ring-amber-200" };
   if (scan.result === "DUPLICATE") return { label: "DUPLICADA", cls: "text-slate-700 bg-slate-100 ring-slate-200" };
   return { label: "COLETADO", cls: "text-green-800 bg-green-50 ring-green-200" };
@@ -101,6 +110,7 @@ export default function ColetaPage() {
   const connectionRef = useRef<Connection>("UNKNOWN");
   const sessionRef = useRef<SessionChoice | null>(null);
   const programmingRef = useRef<ProgrammingChoice | null>(null);
+  const rulesRef = useRef<ScanRules | null>(null);
   const userRef = useRef<SessionUser | null>(null);
   const deviceRef = useRef<DeviceIdentity | null>(null);
   const busyRef = useRef(false);
@@ -198,6 +208,24 @@ export default function ColetaPage() {
       .catch(() => undefined); // offline: keep the remembered programming
   }, [user]);
 
+  // Production rules of the selected programming (cached: instant feedback also offline).
+  useEffect(() => {
+    const id = programming?.id;
+    rulesRef.current = id ? loadRules(window.localStorage, id) : null;
+    if (!user || !id) return;
+    const refresh = () =>
+      api<ScanRules>(`/api/programmings/${id}/scan-rules`, { noRedirect: true })
+        .then((rules) => {
+          if (programmingRef.current?.id !== id) return;
+          rulesRef.current = rules;
+          saveRules(window.localStorage, id, rules);
+        })
+        .catch(() => undefined);
+    void refresh();
+    const timer = setInterval(refresh, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [user, programming?.id]);
+
   // OPEN sessions (optional for scans); a remembered session that was closed is cleared.
   useEffect(() => {
     if (!user) return;
@@ -267,8 +295,18 @@ export default function ColetaPage() {
     } else {
       lastScanIdRef.current = outcome.scan.clientScanId;
       const online = ["ONLINE", "UNKNOWN", "SYNCING"].includes(connectionRef.current);
-      setDisplay({ kind: online ? "sending" : "offline", code: outcome.scan.productCode });
-      if (!online) feedback("offline");
+      // Saved and sent for audit either way; a code the rules refuse is flagged at once (the server confirms).
+      const predicted = predictResult(outcome.scan.rawBarcode, rulesRef.current);
+      if (predicted === "WRONG_BARCODE") {
+        setDisplay({ kind: "wrong_barcode", raw: outcome.scan.rawBarcode.trim() });
+        feedback("error");
+      } else if (predicted === "NOT_IN_PROGRAM") {
+        setDisplay({ kind: "not_in_program", code: outcome.scan.productCode });
+        feedback("error");
+      } else {
+        setDisplay({ kind: online ? "sending" : "offline", code: outcome.scan.productCode });
+        if (!online) feedback("offline");
+      }
       engineRef.current?.trigger(true);
       void refreshRecent();
     }
@@ -653,9 +691,13 @@ export default function ColetaPage() {
 function cameraStatus(d: Display): { label: string; tone: "ok" | "warn" | "bad" | "info" } | null {
   switch (d.kind) {
     case "collected":
-      return { label: `COLETADO · ${d.code}${d.stock !== null ? ` · ESTOQUE ${d.stock}` : ""}`, tone: "ok" };
+      return { label: `COLETADO · ${d.code}${d.stock !== null ? ` · ESTOQUE ${d.stock}` : ""}${d.readyCodes.length ? ` · CARGA PRONTA ${d.readyCodes.join(", ")}` : ""}`, tone: "ok" };
     case "unknown":
       return { label: `NÃO ENCONTRADO · ${d.code}`, tone: "warn" };
+    case "wrong_barcode":
+      return { label: "CÓDIGO INCORRETO · LEIA O CÓDIGO MAIOR", tone: "bad" };
+    case "not_in_program":
+      return { label: `NÃO ENCONTRADO NESSA PROGRAMAÇÃO · ${d.code}`, tone: "warn" };
     case "duplicate":
       return { label: "LEITURA DUPLICADA IGNORADA", tone: "info" };
     case "invalid":
@@ -758,11 +800,17 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
           {display.name && <div className="max-w-full text-lg font-semibold text-green-50 line-clamp-2">{display.name}</div>}
           {display.stock !== null && (
             <div className="mt-1 rounded-lg bg-white/15 px-6 py-2">
-              <div className="text-xs font-bold tracking-[0.2em] text-green-100">ESTOQUE</div>
+              <div className="text-xs font-bold tracking-[0.2em] text-green-100">ESTOQUE PRODUÇÃO</div>
               <div className="text-[clamp(2.25rem,8vw,3.5rem)] font-black leading-none tabular-nums">{display.stock}</div>
             </div>
           )}
-          {!!display.ready && (
+          {display.readyCodes.length > 0 ? (
+            <div className="flex flex-wrap justify-center gap-2">
+              {display.readyCodes.map((c) => (
+                <div key={c} className="rounded-md bg-white px-4 py-1.5 text-lg font-black tracking-wide text-green-800">CARGA PRONTA {c}</div>
+              ))}
+            </div>
+          ) : !!display.ready && (
             <div className="rounded-md bg-white px-3 py-1 text-sm font-bold text-green-800">
               {display.ready === 1 ? "1 carga ficou pronta" : `${display.ready} cargas ficaram prontas`}
             </div>
@@ -778,6 +826,27 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
           <div className="text-sm font-bold tracking-[0.2em]">CÓDIGO</div>
           <div className={code}>{display.code}</div>
           <p className="text-base font-medium">Leitura registrada para análise. Não entra no estoque.</p>
+        </>
+      );
+      break;
+    case "wrong_barcode":
+      cls = "bg-red-700 text-white";
+      body = (
+        <>
+          <div className={`${big} flex items-center gap-3`}><XCircle className="size-[0.85em]" strokeWidth={3} aria-hidden /> CÓDIGO INCORRETO</div>
+          <div className="text-[clamp(1.25rem,5vw,2rem)] font-black tracking-wide">LEIA O CÓDIGO MAIOR</div>
+          <p className="max-w-md text-base text-red-100">Leia o código de barras maior da etiqueta de produção. Este código não entra no estoque.</p>
+          <div className="font-mono text-xl break-all text-red-100">{display.raw}</div>
+        </>
+      );
+      break;
+    case "not_in_program":
+      cls = "bg-amber-400 text-slate-950";
+      body = (
+        <>
+          <div className="text-[clamp(1.5rem,6.5vw,3rem)] font-black leading-tight tracking-tight">NÃO ENCONTRADO<br />NESSA PROGRAMAÇÃO</div>
+          <div className={code}>{display.code}</div>
+          <p className="max-w-md text-base font-medium">Produto não previsto nas cargas da programação{programming ? ` ${programmingLabel(programming)}` : ""}. Não entra no estoque.</p>
         </>
       );
       break;
@@ -804,7 +873,10 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
       cls = "bg-purple-800 text-white";
       body = (
         <>
-          <div className="text-[clamp(1.5rem,6vw,2.75rem)] font-black leading-tight">SESSÃO ENCERRADA</div>
+          <div className="text-[clamp(1.5rem,6vw,2.75rem)] font-black leading-tight">
+            {display.reason === "PROGRAMMING_CLOSED" ? "PROGRAMAÇÃO ENCERRADA"
+              : display.reason === "PROGRAMMING_NOT_FOUND" ? "PROGRAMAÇÃO NÃO ENCONTRADA" : "SESSÃO ENCERRADA"}
+          </div>
           <div className={code}>{display.code}</div>
           <p className="text-base text-purple-100">Leitura guardada para revisão do administrador.</p>
         </>
