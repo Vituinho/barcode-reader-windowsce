@@ -569,7 +569,9 @@ export default function ColetaPage() {
                       {new Date(r.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     </time>
                     <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-sm font-semibold">{r.productCode}</span>
+                      <span className="block truncate font-mono text-sm font-semibold">
+                        {r.result === "WRONG_BARCODE" || r.result === "BLOCKED" ? r.rawBarcode.trim() : r.productCode}
+                      </span>
                       {r.itemName && <span className="block truncate text-xs text-slate-500">{r.itemName}</span>}
                     </span>
                     <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ring-1 ${st.cls}`}>{st.label}</span>
@@ -840,9 +842,10 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
       cls = "bg-red-700 text-white";
       body = (
         <>
-          <div className={`${big} flex items-center gap-3`}><XCircle className="size-[0.85em]" strokeWidth={3} aria-hidden /> CÓDIGO INCORRETO</div>
+          <XCircle className="size-14" strokeWidth={2.5} aria-hidden />
+          <div className={big}>CÓDIGO INCORRETO</div>
           <div className="text-[clamp(1.25rem,5vw,2rem)] font-black tracking-wide">LEIA O CÓDIGO MAIOR</div>
-          <p className="max-w-md text-base text-red-100">Leia o código de barras maior da etiqueta de produção. Este código não entra no estoque.</p>
+          <p className="max-w-md text-base text-red-100">Este é o código pequeno (EAN) ou outro código que não é o de produção. Ele não entra no estoque.</p>
           <div className="font-mono text-xl break-all text-red-100">{display.raw}</div>
         </>
       );
@@ -851,7 +854,8 @@ function StatusPanel({ display, pending, programming, onChooseProgramming }: {
       cls = "bg-red-800 text-white";
       body = (
         <>
-          <div className={`${big} flex items-center gap-3`}><CircleSlash className="size-[0.85em]" strokeWidth={3} aria-hidden /> CÓDIGO BLOQUEADO</div>
+          <CircleSlash className="size-14" strokeWidth={2.5} aria-hidden />
+          <div className={big}>CÓDIGO BLOQUEADO</div>
           <div className="font-mono text-2xl break-all">{display.raw}</div>
           <p className="max-w-md text-base text-red-100">Este código foi bloqueado pelo administrador. A leitura foi registrada e não entra no estoque.</p>
         </>

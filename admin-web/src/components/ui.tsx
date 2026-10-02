@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, AlertTriangle, Barcode, Boxes, CalendarRange, Check, CheckCircle2, CircleDashed, Clock, Download,
+  AlertCircle, AlertTriangle, Barcode, Boxes, CalendarDays, CalendarRange, Check, CheckCircle2, CircleDashed, Clock, Download,
   FileUp, Inbox, LayoutDashboard, ListChecks, Loader2, LogOut, Menu, Package, PackageCheck, ScanLine, ScanSearch,
   Search, ShieldBan, Smartphone, Tag, Truck, Users, Wrench, X, XCircle, type LucideIcon,
 } from "lucide-react";
@@ -29,6 +29,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: "Operação",
     items: [
       { href: "/dashboard", label: "Painel", icon: LayoutDashboard },
+      { href: "/programacoes", label: "Programações", icon: CalendarDays, operator: true },
       { href: "/estoque", label: "Estoque", icon: Boxes, operator: true },
       { href: "/cargas", label: "Cargas", icon: Truck, operator: true },
       { href: "/expedicoes", label: "Expedições", icon: PackageCheck, operator: true },
@@ -63,7 +64,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ];
 
-const OPERATOR_PATHS = ["/estoque", "/cargas", "/expedicoes"];
+const OPERATOR_PATHS = ["/programacoes", "/estoque", "/cargas", "/expedicoes"];
 
 function activeHref(path: string): string | null {
   let best: string | null = null;

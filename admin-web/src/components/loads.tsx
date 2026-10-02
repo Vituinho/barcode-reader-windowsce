@@ -12,7 +12,7 @@ export function loadState(load: Pick<LoadSummary, "status" | "needsReview">): Lo
 const STATE: Record<LoadState, { label: string; cls: string; bar: string; Icon: typeof Truck }> = {
   READY: { label: "PRONTA", cls: "bg-green-700 text-white", bar: "bg-green-600", Icon: CheckCircle2 },
   PENDING: { label: "PENDENTE", cls: "bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300", bar: "bg-amber-500", Icon: Truck },
-  REVIEW: { label: "REVISAR QUANTIDADES", cls: "bg-purple-100 text-purple-900 ring-1 ring-inset ring-purple-300", bar: "bg-purple-500", Icon: AlertCircle },
+  REVIEW: { label: "REVISAR", cls: "bg-purple-100 text-purple-900 ring-1 ring-inset ring-purple-300", bar: "bg-purple-500", Icon: AlertCircle },
   DISPATCHED: { label: "EXPEDIDA", cls: "bg-slate-200 text-slate-700", bar: "bg-slate-400", Icon: PackageCheck },
 };
 
@@ -47,7 +47,7 @@ export function ProgressBar({ value, state }: { value: number; state: LoadState 
 export function shortageText(load: LoadSummary): string {
   const state = loadState(load);
   if (state === "DISPATCHED") return "Expedida";
-  if (state === "REVIEW") return "Quantidade a definir em itens não unitários";
+  if (state === "REVIEW") return "Revisar: quantidade não unitária ou regra de lado pendente";
   if (state === "READY") return "Pronta para expedição";
   return `Faltam ${load.missingVolumes} ${load.missingVolumes === 1 ? "volume" : "volumes"}`;
 }

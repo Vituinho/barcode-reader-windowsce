@@ -270,3 +270,38 @@ export interface UnknownCode {
   lastDeviceId: string | null;
   lastOperatorName: string | null;
 }
+
+export interface Programming {
+  id: string;
+  scheduledDate: string; // YYYY-MM-DD
+  name: string | null;
+  status: "OPEN" | "CLOSED";
+  createdAt: string;
+  closedAt: string | null;
+  loadCount: number;
+  readyCount: number;
+  pendingCount: number;
+  reviewCount: number;
+  dispatchedCount: number;
+  volumesRegistered: number;
+  warningInvoices: number;
+  /** Loads still to dispatch: PREVISTO / COBERTO / FALTA (shared stock counted once per product) */
+  requiredVolumes: number;
+  coveredVolumes: number;
+  missingVolumes: number;
+  progress: number;
+  /** DISPONÍVEL: current production stock of the programming */
+  stockVolumes: number;
+}
+
+export interface ProductCoverage {
+  productCode: string | null;
+  description: string;
+  required: number;
+  covered: number;
+  stock: number;
+  missing: number;
+  dispatched: number;
+  openLoads: number;
+  needsReview: boolean;
+}

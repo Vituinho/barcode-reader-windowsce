@@ -40,7 +40,7 @@ export default function DashboardPage() {
     if (data.unknownScansToday) alerts.push({ tone: "warning", href: "/barcodes/unknown",
       text: `${data.unknownScansToday} ${data.unknownScansToday === 1 ? "leitura" : "leituras"} de código desconhecido hoje` });
     if (data.conflictsOpen) alerts.push({ tone: "danger", href: "/scans?syncState=CONFLICT",
-      text: `${data.conflictsOpen} ${data.conflictsOpen === 1 ? "leitura" : "leituras"} em sessão encerrada aguardando revisão` });
+      text: `${data.conflictsOpen} ${data.conflictsOpen === 1 ? "leitura" : "leituras"} aguardando revisão (sessão ou programação encerrada)` });
   }
 
   return (

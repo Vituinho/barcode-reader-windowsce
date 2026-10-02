@@ -4,7 +4,8 @@ import { Boxes, History, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Btn, EmptyState, ErrorBox, inputCls, Loading, SearchInput, Shell, Table, Td, useCurrentUser } from "@/components/ui";
 import { api, errorMessage, fmtDateTime, query } from "@/lib/api";
-import type { InventoryRow, Movement } from "@/lib/types";
+import { formatProgrammingDate } from "@/lib/programming";
+import type { InventoryRow, Movement, Programming } from "@/lib/types";
 
 interface MovementHistory {
   code: string;
@@ -24,15 +25,27 @@ export default function StockPage() {
   const [selected, setSelected] = useState<MovementHistory | null>(null);
   const [adj, setAdj] = useState({ quantity: "", reason: "" });
   const [error, setError] = useState<string | null>(null);
+  const [programmings, setProgrammings] = useState<Programming[]>([]);
+  const [programmingId, setProgrammingId] = useState("");
+
+  useEffect(() => {
+    api<Programming[]>("/api/programmings").then(setProgrammings).catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     try {
-      setRows(await api<InventoryRow[]>(`/api/inventory${query({ q, inStock: onlyInStock ? "true" : undefined })}`));
+      setRows(await api<InventoryRow[]>(`/api/inventory${query({ q, inStock: onlyInStock ? "true" : undefined, programmingId: programmingId || undefined })}`));
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [q, onlyInStock]);
+  }, [q, onlyInStock, programmingId]);
+
+  useEffect(() => setSelected(null), [programmingId]);
+  const programmingName = (id: string) => {
+    const p = programmings.find((x) => x.id === id);
+    return p ? formatProgrammingDate(p.scheduledDate) + (p.name ? ` (${p.name})` : "") : "";
+  };
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -42,7 +55,7 @@ export default function StockPage() {
   async function openHistory(code: string) {
     try {
       const h = await api<{ productCode: string; description: string; quantity: number; movements: Movement[] }>(
-        `/api/inventory/${encodeURIComponent(code)}/movements`,
+        `/api/inventory/${encodeURIComponent(code)}/movements${query({ programmingId: programmingId || undefined })}`,
       );
       setSelected({ code: h.productCode, description: h.description, quantity: h.quantity, movements: h.movements });
       setAdj({ quantity: "", reason: "" });
@@ -59,7 +72,7 @@ export default function StockPage() {
       return;
     }
     try {
-      await api("/api/inventory/adjustments", { method: "POST", body: { productCode: selected.code, quantity, reason: adj.reason } });
+      await api("/api/inventory/adjustments", { method: "POST", body: { productCode: selected.code, quantity, reason: adj.reason, programmingId: programmingId || null } });
       await openHistory(selected.code);
       await load();
     } catch (e) {
@@ -70,10 +83,16 @@ export default function StockPage() {
   const total = (rows ?? []).reduce((s, r) => s + r.quantity, 0);
 
   return (
-    <Shell title="Estoque" description="Saldo atual por produto. Entradas vêm das leituras; saídas, das expedições.">
+    <Shell title="Estoque" description="Saldo de produção por produto. Entradas vêm das leituras; saídas, das expedições. Cada programação tem o seu estoque.">
       <ErrorBox error={error} />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <SearchInput value={q} onChange={setQ} placeholder="Buscar por código ou produto..." className="sm:w-[28rem]" />
+        <select className={`${inputCls} sm:w-64`} value={programmingId} onChange={(e) => setProgrammingId(e.target.value)} aria-label="Programação">
+          <option value="">Todas as programações</option>
+          {programmings.map((p) => (
+            <option key={p.id} value={p.id}>{programmingName(p.id)}{p.status === "CLOSED" ? " (encerrada)" : ""}</option>
+          ))}
+        </select>
         <label className="inline-flex h-10 items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" className="size-4 accent-orange-600" checked={onlyInStock} onChange={(e) => setOnlyInStock(e.target.checked)} />
           Somente com estoque
@@ -141,6 +160,9 @@ export default function StockPage() {
                 <input className={`${inputCls} mt-1 block w-full`} value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })} />
               </label>
               <Btn type="submit" disabled={adj.reason.trim().length < 3 || !adj.quantity}>Registrar</Btn>
+              <p className="w-full text-xs text-slate-500">
+                O ajuste vale para {programmingId ? <>a programação <b>{programmingName(programmingId)}</b></> : <>o estoque geral (sem programação); escolha uma programação acima para ajustar o estoque dela</>}.
+              </p>
             </form>
             <ol className="flex-1 divide-y divide-slate-100 overflow-y-auto">
               {selected.movements.length === 0 && <li><EmptyState title="Sem movimentações" /></li>}
