@@ -144,6 +144,20 @@ One Railway project with three services from this repo:
 - **Collectors:** open `https://<admin domain>/coleta` on each device (see Instalação in the panel to add it to
   the home screen). No per-device configuration is needed.
 
+## RAR imports (Railway requirement)
+
+NF-e archives can be uploaded as XML, ZIP or **RAR**. RAR headers are validated in Python (`rarfile`), and
+decompression uses **bsdtar** (libarchive). `server/railpack.json` installs the Debian package
+`libarchive-tools` in the API image. If your builder ignores that file, set this variable on the API service
+instead:
+
+```
+RAILPACK_DEPLOY_APT_PACKAGES=libarchive-tools
+```
+
+`GET /api/programmings/import-capabilities` reports `"rar": true` once the tool is present. Without it, RAR
+uploads are refused with a clear `RAR_UNSUPPORTED` message; ZIP keeps working.
+
 ## Windows CE collector (legacy, not used in operation)
 
 > Kept as reference only. The supported collector is the web collector above. Nothing below is needed to

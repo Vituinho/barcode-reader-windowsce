@@ -28,6 +28,14 @@ def programming_out(db: Session, p: LoadProgramming) -> ProgrammingOut:
     return out
 
 
+@router.get("/import-capabilities")
+def import_capabilities(_: AuthContext = Depends(current_auth)):
+    """Lets the UI tell users up front whether RAR archives can be opened by this server."""
+    from app.services import rar_archive
+
+    return {"zip": True, "rar": rar_archive.tool_available()}
+
+
 @router.get("", response_model=list[ProgrammingOut])
 def list_programmings(status: str | None = Query(default=None, pattern="^(OPEN|CLOSED)$"),
                       db: Session = Depends(get_db), _: AuthContext = Depends(current_auth)):

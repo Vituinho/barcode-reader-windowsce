@@ -1,4 +1,4 @@
-"""NF-e XML import (single XMLs, many XMLs, or ZIPs with folders).
+"""NF-e XML import (single XMLs, many XMLs, or ZIP/RAR archives with folders).
 
 Security: XML is parsed with defusedxml (no DTD, no entities, no external resolution). ZIP entries are read in
 memory only (never extracted to disk); absolute/parent-relative paths are rejected; size, count and
@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import DomainError
 from app.models import Invoice, InvoiceItem, Item, Load, LoadItem
 from app.repositories.repos import AuditRepo
+from app.services import rar_archive
 from app.services.auth_service import AuthContext
 
 MAX_REQUEST_BYTES = 60 * 1024 * 1024
@@ -250,6 +251,9 @@ def collect_sources(uploads: list[tuple[str, bytes]], report: ImportReport) -> l
         if lower.endswith(".zip") or data[:4] == b"PK\x03\x04":
             sources.extend(_zip_sources(name, data, report))
             continue
+        if rar_archive.is_rar(name, data):
+            sources.extend(_rar_sources(name, data, report))
+            continue
         report.files_processed += 1
         if not lower.endswith(".xml"):
             report.ignored_files.append(name)
@@ -259,6 +263,66 @@ def collect_sources(uploads: list[tuple[str, bytes]], report: ImportReport) -> l
             continue
         sources.append(Source(name, None, data))
     return sources
+
+
+def _rar_sources(rar_name: str, data: bytes, report: ImportReport) -> list[Source]:
+    """Same rules as ZIP: headers are validated first, then only safe XML members are extracted."""
+    if not rar_archive.tool_available():
+        report.files_processed += 1
+        report.fail(rar_name, "RAR_UNSUPPORTED",
+                    "Servidor sem extrator RAR (bsdtar). Envie ZIP ou instale o pacote libarchive-tools.")
+        return []
+    try:
+        members, path = rar_archive.list_members(data)
+    except rar_archive.RarError as exc:
+        report.files_processed += 1
+        report.fail(rar_name, "INVALID_RAR", str(exc))
+        return []
+    try:
+        if len(members) > MAX_ZIP_ENTRIES:
+            report.fail(rar_name, "ARCHIVE_TOO_MANY_ENTRIES", f"RAR com mais de {MAX_ZIP_ENTRIES} arquivos")
+            return []
+        selected: list[tuple[str, str, str | None]] = []  # (archive name, file name, folder)
+        total = 0
+        for m in members:
+            label = f"{rar_name}:{m.filename}"
+            report.files_processed += 1
+            member = _safe_zip_member(m.filename)
+            if member is None:
+                report.fail(label, "UNSAFE_PATH", "Caminho inseguro dentro do RAR (ignorado)")
+                continue
+            name, folder = member
+            if not name.lower().endswith(".xml"):
+                report.ignored_files.append(label)
+                continue
+            if m.encrypted:
+                report.fail(label, "ENCRYPTED", "Arquivo protegido por senha")
+                continue
+            if m.file_size > MAX_XML_BYTES:
+                report.fail(label, "FILE_TOO_LARGE", "XML maior que 5 MB")
+                continue
+            if m.compress_size and m.file_size / m.compress_size > MAX_COMPRESSION_RATIO:
+                report.fail(label, "SUSPICIOUS_COMPRESSION", "Taxa de compressão suspeita (possível bomba de compressão)")
+                continue
+            total += m.file_size
+            if total > MAX_ZIP_UNCOMPRESSED:
+                report.fail(rar_name, "ARCHIVE_TOO_LARGE", "Conteúdo descompactado excede o limite; restante ignorado")
+                break
+            selected.append((m.filename, name, folder))
+        try:
+            contents = rar_archive.extract(path, [s[0] for s in selected], MAX_XML_BYTES)
+        except rar_archive.RarError as exc:
+            report.fail(rar_name, "INVALID_RAR", str(exc))
+            return []
+        sources = []
+        for archive_name, name, folder in selected:
+            if archive_name in contents:
+                sources.append(Source(name, folder, contents[archive_name]))
+            else:
+                report.fail(f"{rar_name}:{archive_name}", "EXTRACT_FAILED", "Arquivo não pôde ser extraído do RAR")
+        return sources
+    finally:
+        rar_archive.cleanup(path)
 
 
 def _zip_sources(zip_name: str, data: bytes, report: ImportReport) -> list[Source]:
