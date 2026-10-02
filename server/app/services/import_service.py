@@ -279,6 +279,11 @@ def _rar_sources(rar_name: str, data: bytes, report: ImportReport) -> list[Sourc
         report.fail(rar_name, "INVALID_RAR", str(exc))
         return []
     try:
+        if not members:
+            # rarfile reads some damaged headers as an empty archive: never report that as a silent success.
+            report.files_processed += 1
+            report.fail(rar_name, "INVALID_RAR", "RAR vazio ou corrompido")
+            return []
         if len(members) > MAX_ZIP_ENTRIES:
             report.fail(rar_name, "ARCHIVE_TOO_MANY_ENTRIES", f"RAR com mais de {MAX_ZIP_ENTRIES} arquivos")
             return []
